@@ -249,10 +249,30 @@ def test_source_reviews_are_listed(client):
 
 
 def test_similar_games_link_to_their_card(client):
+    # Tags carry most of the similarity now, so the seed needs them.
+    with main.SessionLocal() as session:
+        for slug, tags in {
+            "silksong": {"genres": ["metroidvania"], "mood": ["dark"], "setting": ["fantasy"]},
+            "dawnwalker": {"genres": ["metroidvania"], "mood": ["dark"], "setting": ["fantasy"]},
+            "nba": {"genres": ["sports"], "mood": [], "setting": ["modern"]},
+        }.items():
+            session.scalar(select(Game).where(Game.slug == slug)).tags = tags
+        session.commit()
+    similar.invalidate()
+
     body = client.get("/game/silksong").text
     assert "Похожие игры" in body
-    # Dawnwalker shares the most vocabulary with Silksong among the seeded games.
     assert 'href="/game/dawnwalker"' in body
+    assert 'href="/game/nba"' not in body  # a sports game is not a metroidvania
+    assert "metroidvania" in body  # the shared tags explain the match
+
+
+def test_similar_games_say_so_when_nothing_is_close(client):
+    # Nothing is tagged and the blurbs share no rare words: better an honest note than
+    # the least-bad neighbour.
+    similar.invalidate()
+    body = client.get("/game/nba").text
+    assert "Похожих пока не нашлось" in body
 
 
 def test_unknown_game_is_404(client):

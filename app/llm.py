@@ -173,6 +173,176 @@ def chat_json(
     raise LLMError(f"all models failed, last error: {last_error}")
 
 
+# ---------------------------------------------------------------------------- tags
+
+#: A closed vocabulary keeps tags comparable between games — free-form labels would
+#: never overlap, which is exactly the problem tagging is here to solve. Anything the
+#: model invents outside these lists is dropped.
+TAG_VOCABULARY: dict[str, tuple[str, ...]] = {
+    "genres": (
+        "action",
+        "adventure",
+        "rpg",
+        "shooter",
+        "platformer",
+        "metroidvania",
+        "roguelike",
+        "strategy",
+        "tactics",
+        "simulation",
+        "management",
+        "puzzle",
+        "horror",
+        "survival",
+        "sandbox",
+        "racing",
+        "sports",
+        "fighting",
+        "rhythm",
+        "visual-novel",
+        "point-and-click",
+        "card-game",
+        "idle",
+        "party",
+        "mmo",
+    ),
+    "mechanics": (
+        "combat",
+        "parry",
+        "stealth",
+        "crafting",
+        "building",
+        "exploration",
+        "puzzle-solving",
+        "resource-management",
+        "base-building",
+        "deck-building",
+        "turn-based",
+        "real-time",
+        "physics",
+        "procedural-generation",
+        "permadeath",
+        "levelling",
+        "loot",
+        "dialogue-choices",
+        "time-limit",
+        "speedrunning",
+        "economy",
+        "farming",
+        "driving",
+        "shooting",
+        "story-driven",
+    ),
+    "mood": (
+        "dark",
+        "cozy",
+        "funny",
+        "relaxing",
+        "tense",
+        "challenging",
+        "atmospheric",
+        "emotional",
+        "chaotic",
+        "serious",
+        "cute",
+        "surreal",
+        "nostalgic",
+        "brutal",
+    ),
+    "setting": (
+        "fantasy",
+        "sci-fi",
+        "medieval",
+        "modern",
+        "historical",
+        "post-apocalyptic",
+        "cyberpunk",
+        "space",
+        "underwater",
+        "urban",
+        "rural",
+        "school",
+        "office",
+        "war",
+        "mythology",
+        "animals",
+        "abstract",
+    ),
+    "perspective": (
+        "first-person",
+        "third-person",
+        "top-down",
+        "isometric",
+        "side-scrolling",
+        "text",
+    ),
+}
+MAX_TAGS_PER_FIELD = 6
+
+TAGS_SCHEMA = (
+    '{"genres": ["строка"], "mechanics": ["строка"], "mood": ["строка"], '
+    '"setting": ["строка"], "perspective": "строка", "multiplayer": true}'
+)
+
+
+def clean_tags(raw: Any) -> dict[str, Any]:
+    """Keep only vocabulary values; drop everything the model made up."""
+    if not isinstance(raw, dict):
+        return {}
+    tags: dict[str, Any] = {}
+    for field, allowed in TAG_VOCABULARY.items():
+        if field == "perspective":
+            continue
+        values = raw.get(field)
+        values = values if isinstance(values, list) else []
+        kept: list[str] = []
+        for value in values:
+            if not isinstance(value, str):
+                continue
+            normalised = value.strip().lower().replace(" ", "-").replace("_", "-")
+            if normalised in allowed and normalised not in kept:
+                kept.append(normalised)
+        tags[field] = kept[:MAX_TAGS_PER_FIELD]
+
+    perspective = raw.get("perspective")
+    if isinstance(perspective, str):
+        normalised = perspective.strip().lower().replace(" ", "-").replace("_", "-")
+        tags["perspective"] = normalised if normalised in TAG_VOCABULARY["perspective"] else None
+    else:
+        tags["perspective"] = None
+    tags["multiplayer"] = bool(raw.get("multiplayer"))
+    return tags
+
+
+def build_tags(
+    title: str,
+    genres: list[str],
+    description: str | None,
+    reviews: list[str],
+    game_id: int | None,
+) -> dict[str, Any]:
+    """One cheap call per game: a closed-vocabulary description of what it is."""
+    allowed = "\n".join(
+        f"- {field}: {', '.join(values)}" for field, values in TAG_VOCABULARY.items()
+    )
+    excerpt = "\n".join(f"- {r.strip()[:400]}" for r in reviews[:5])
+    prompt = (
+        f"Игра: {title}\n"
+        f"Жанры с Metacritic: {', '.join(genres) or 'не указаны'}\n"
+        f"Описание: {(description or 'нет').strip()[:1500]}\n"
+        + (f"\nФрагменты отзывов:\n{excerpt}\n" if excerpt else "")
+        + "\nОпиши игру тегами. Разрешены ТОЛЬКО значения из списков ниже, "
+        "ничего не придумывай и не переводи:\n"
+        f"{allowed}\n\n"
+        "multiplayer — true, если в игре есть совместная или соревновательная игра "
+        "с людьми, иначе false. perspective — одно значение или пустая строка, если "
+        "непонятно. В каждом списке до 6 значений, только уверенные. Если про поле "
+        "нечего сказать, верни пустой список."
+    )
+    data = chat_json(prompt, TAGS_SCHEMA, purpose="tags", game_id=game_id)
+    return clean_tags(data)
+
+
 SUMMARY_SCHEMA = '{"likes": ["строка"], "dislikes": ["строка"], "summary": "строка"}'
 
 

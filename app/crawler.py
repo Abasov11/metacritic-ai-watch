@@ -9,6 +9,7 @@ own table, so it resets with the day for free and cannot drift out of sync.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import threading
 from datetime import UTC, datetime, timedelta
@@ -19,7 +20,7 @@ from sqlalchemy import select
 from app import covers, monitor, similar, youtube
 from app.config import settings
 from app.db import SessionLocal, init_db
-from app.llm import summarize_reviews
+from app.llm import build_tags, summarize_reviews
 from app.models import (
     CrawlItem,
     CrawlRun,
@@ -175,6 +176,42 @@ def _letsplay_is_current(letsplay: LetsPlay | None) -> bool:
     return age < timedelta(days=settings.youtube_max_age_days)
 
 
+def _tags_hash(game: Game) -> str:
+    """Identity of the text the tags describe."""
+    return text_hash(f"{game.title}|{' '.join(game.genres or [])}|{game.description or ''}")
+
+
+def process_tags(session, game: Game) -> str | None:
+    """Tag the game unless the same text is already tagged. Returns an error string."""
+    digest = _tags_hash(game)
+    if game.tags and game.tags_hash == digest:
+        return None
+
+    reviews = list(
+        session.scalars(select(Review.text).where(Review.game_id == game.id).limit(5)).all()
+    )
+    monitor.emit(
+        type="tags_start",
+        worker="llm",
+        status="busy",
+        detail=f"tagging {game.slug}",
+        slug=game.slug,
+        message=f"размечаю теги для {game.title}",
+    )
+    try:
+        tags = build_tags(game.title, game.genres or [], game.description, reviews, game.id)
+    except Exception as exc:
+        log.warning("tagging failed for %s: %s", game.slug, exc)
+        return f"теги: {exc}"
+    if not tags:
+        return "теги: модель вернула пустой ответ"
+
+    game.tags = tags
+    game.tags_hash = digest
+    session.commit()
+    return None
+
+
 def process_letsplay(session, game: Game) -> str | None:
     """Find and summarise a let's play. Returns an error string, never raises."""
     existing = session.scalar(select(LetsPlay).where(LetsPlay.game_id == game.id))
@@ -295,6 +332,10 @@ def process_game(session, slug: str) -> tuple[str, str | None]:
             continue
         _upsert_summary(session, game, kind, review_count=len(stored), **result)
         session.commit()
+
+    tags_error = process_tags(session, game)
+    if tags_error:
+        log.info("no tags for %s: %s", slug, tags_error)
 
     if settings.youtube_enabled:
         letsplay_error = process_letsplay(session, game)
@@ -419,6 +460,28 @@ def _run_crawl(reason: str, limit: int, now: datetime | None) -> CrawlRun:
         return run
 
 
+def backfill_tags(limit: int | None = None) -> int:
+    """Tag every game in the database that has no current tags."""
+    init_db()
+    done = skipped = failed = 0
+    with SessionLocal() as session:
+        games = session.scalars(select(Game).order_by(Game.id)).all()
+        for game in games[: limit or len(games)]:
+            if game.tags and game.tags_hash == _tags_hash(game):
+                skipped += 1
+                continue
+            error = process_tags(session, game)
+            if error:
+                failed += 1
+                log.warning("%s: %s", game.slug, error)
+            else:
+                done += 1
+                log.info("%s -> %s", game.slug, json.dumps(game.tags, ensure_ascii=False))
+    similar.invalidate()
+    print(f"теги: {done} размечено, {skipped} уже актуальны, {failed} с ошибкой")
+    return 0 if not failed else 1
+
+
 def refresh_covers() -> int:
     """Re-fetch every cover already referenced in the database."""
     init_db()
@@ -446,6 +509,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=None, help="max games this run")
     parser.add_argument("--reason", default="manual")
     parser.add_argument(
+        "--backfill-tags",
+        action="store_true",
+        help="tag every game already in the database, then exit",
+    )
+    parser.add_argument(
         "--refresh-covers",
         action="store_true",
         help="re-download the cover of every game already in the database, then exit",
@@ -455,6 +523,8 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    if args.backfill_tags:
+        return backfill_tags(args.limit)
     if args.refresh_covers:
         return refresh_covers()
     if not args.once:

@@ -148,21 +148,30 @@
       {% endif %}
     </section>
 
-    {% if similar %}
-      <section class="section">
-        <h2 class="section__title">Похожие игры</h2>
+    <section class="section">
+      <h2 class="section__title">Похожие игры</h2>
+      {% if similar %}
         <ul class="grid grid--tight">
-          {% for other in similar %}
+          {% for item in similar %}
             <li class="card">
-              <a class="card__link" href="/game/{{ other.slug }}">
-                <div class="cover">{{ m.cover(other, "160px") }}</div>
-                <h3 class="card__title">{{ other.title }}</h3>
+              <a class="card__link" href="/game/{{ item.game.slug }}">
+                <div class="cover">{{ m.cover(item.game, "160px") }}</div>
+                <h3 class="card__title">{{ item.game.title }}</h3>
               </a>
+              {% if item.shared %}
+                <ul class="tags" aria-label="Общие теги">
+                  {% for tag in item.shared[:3] %}
+                    <li class="tag">{{ tag.split(":")[1] }}</li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
             </li>
           {% endfor %}
         </ul>
-      </section>
-    {% endif %}
+      {% else %}
+        <p class="empty">Похожих пока не нашлось — в базе слишком мало близких игр.</p>
+      {% endif %}
+    </section>
 
     <section class="section">
       <h2 class="section__title">Исходные отзывы</h2>

@@ -40,6 +40,10 @@ class Game(Base):
     publisher: Mapped[str | None] = mapped_column(String(200))
     release_date: Mapped[str | None] = mapped_column(String(20))
     genres: Mapped[list[str]] = mapped_column(JSON, default=list)
+    #: Closed-vocabulary tags from the LLM, see `app.llm.TAG_VOCABULARY`.
+    tags: Mapped[dict] = mapped_column(JSON, default=dict)
+    #: Hash of the text the tags were derived from; they are rebuilt when it changes.
+    tags_hash: Mapped[str | None] = mapped_column(String(32))
     video_url: Mapped[str | None] = mapped_column(String(500))
     metacritic_url: Mapped[str | None] = mapped_column(String(500))
 

@@ -1,4 +1,9 @@
-"""Similar games by TF-IDF cosine over the game's own text. No LLM, no extra deps.
+"""Similar games: LLM tags first, wording second.
+
+TF-IDF alone reads the marketing blurb, and on a catalogue of obscure indies almost no
+two blurbs share a rare word, so every cosine sits near zero. The closed-vocabulary
+tags (`app.llm.TAG_VOCABULARY`) give the two games something they *can* share, and the
+cosine still separates games that happen to carry the same tags.
 
 A few hundred games make a matrix small enough to keep in memory and rebuild whenever
 the row count changes.
@@ -23,6 +28,12 @@ _STOPWORDS = frozenset(
     new game games play player players world can will one out more into their они
     очень игра игры""".split()
 )
+
+#: Tags dominate; wording only reorders games that already look alike.
+TAG_WEIGHT = 0.6
+TEXT_WEIGHT = 0.4
+#: Below this a "similar" game is just the nearest of a bad lot, so we show nothing.
+MIN_SCORE = 0.12
 
 _cache: tuple[int, list[int], list[dict[str, float]]] | None = None
 
@@ -80,21 +91,63 @@ def invalidate() -> None:
     _cache = None
 
 
-def similar_games(game_id: int, k: int = 6) -> list[tuple[int, float]]:
-    """Up to `k` (game_id, score) pairs, most similar first."""
+def tag_set(tags: dict | None) -> set[str]:
+    """Flatten a tag object into comparable `field:value` strings."""
+    if not isinstance(tags, dict):
+        return set()
+    flat: set[str] = set()
+    for field in ("genres", "mechanics", "mood", "setting"):
+        for value in tags.get(field) or []:
+            if isinstance(value, str) and value:
+                flat.add(f"{field}:{value}")
+    if tags.get("perspective"):
+        flat.add(f"perspective:{tags['perspective']}")
+    if tags.get("multiplayer"):
+        flat.add("multiplayer:yes")
+    return flat
+
+
+def jaccard(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    union = left | right
+    return len(left & right) / len(union) if union else 0.0
+
+
+def cosine(left: dict[str, float], right: dict[str, float]) -> float:
+    # Iterate the shorter vector; both are unit length, so the dot product is cosine.
+    small, large = (left, right) if len(left) < len(right) else (right, left)
+    return sum(weight * large.get(term, 0.0) for term, weight in small.items())
+
+
+def similar_games(
+    game_id: int, k: int = 6, min_score: float = MIN_SCORE
+) -> list[tuple[int, float, list[str]]]:
+    """Up to `k` (game_id, score, shared tags) triples, most similar first.
+
+    Returns nothing rather than the least-bad neighbours when nothing clears the bar.
+    """
     ids, vectors = _vectors()
     if game_id not in ids:
         return []
-    target = vectors[ids.index(game_id)]
+    position = ids.index(game_id)
+    target = vectors[position]
 
-    scored = []
+    with SessionLocal() as session:
+        tags = {
+            row.id: tag_set(row.tags)
+            for row in session.scalars(select(Game).where(Game.id.in_(ids))).all()
+        }
+    target_tags = tags.get(game_id, set())
+
+    scored: list[tuple[int, float, list[str]]] = []
     for other_id, vector in zip(ids, vectors, strict=True):
         if other_id == game_id:
             continue
-        # Iterate the shorter vector; both are unit length, so the dot product is cosine.
-        small, large = (target, vector) if len(target) < len(vector) else (vector, target)
-        score = sum(weight * large.get(term, 0.0) for term, weight in small.items())
-        if score > 0:
-            scored.append((other_id, score))
-    scored.sort(key=lambda pair: (-pair[1], pair[0]))
+        shared = target_tags & tags.get(other_id, set())
+        score = TAG_WEIGHT * jaccard(target_tags, tags.get(other_id, set()))
+        score += TEXT_WEIGHT * cosine(target, vector)
+        if score >= min_score:
+            scored.append((other_id, score, sorted(shared)))
+    scored.sort(key=lambda triple: (-triple[1], triple[0]))
     return scored[:k]

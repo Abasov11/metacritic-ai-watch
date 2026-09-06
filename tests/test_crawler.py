@@ -51,7 +51,14 @@ def make_game(slug: str, title: str | None = None) -> GameData:
 @pytest.fixture
 def scraper(monkeypatch):
     """Stub the whole scraper surface and record what was asked for."""
-    calls = {"games": [], "new_releases": 0, "browse": [], "covers": [], "letsplays": []}
+    calls = {
+        "games": [],
+        "new_releases": 0,
+        "browse": [],
+        "covers": [],
+        "letsplays": [],
+        "tags": [],
+    }
 
     def fetch_new_releases(**_kwargs):
         calls["new_releases"] += 1
@@ -81,6 +88,17 @@ def scraper(monkeypatch):
         calls["covers"].append((slug, url))
         return f"{slug}.jpg"
 
+    def build_tags(title, genres, description, reviews, game_id):
+        calls["tags"].append(title)
+        return {
+            "genres": ["action"],
+            "mechanics": ["combat"],
+            "mood": [],
+            "setting": [],
+            "perspective": None,
+            "multiplayer": False,
+        }
+
     def build_letsplay(title, game_id, budget=None):
         calls["letsplays"].append(title)
         return {
@@ -100,6 +118,7 @@ def scraper(monkeypatch):
     # Covers and let's plays have their own tests; here neither may reach the network.
     monkeypatch.setattr(crawler.covers, "cache_cover", cache_cover)
     monkeypatch.setattr(crawler.youtube, "build_letsplay", build_letsplay)
+    monkeypatch.setattr(crawler, "build_tags", build_tags)
     return calls
 
 
@@ -343,8 +362,10 @@ def test_similar_games_ranks_the_closest_first(db, scraper, llm, monkeypatch):
 
     with db() as session:
         ids = {g.slug: g.id for g in session.scalars(select(Game)).all()}
-    ranked = similar.similar_games(ids["metroid"], k=5)
-    by_id = dict(ranked)
+    # The stub tags every game identically, so the tag half is a constant here and the
+    # wording decides the order — which is what this test is about.
+    ranked = similar.similar_games(ids["metroid"], k=5, min_score=0.0)
+    by_id = {game_id: score for game_id, score, _ in ranked}
     assert ranked[0][0] == ids["metroid2"]
     # The basketball game shares only boilerplate (studio, platforms), which idf zeroes.
     assert by_id.get(ids["sport"], 0.0) < by_id[ids["metroid2"]]

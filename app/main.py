@@ -320,7 +320,7 @@ def game_page(request: Request, slug: str, session: Session = Depends(get_sessio
     ranked = similar.similar_games(game.id, k=6)
     by_id = {
         g.id: g
-        for g in session.scalars(select(Game).where(Game.id.in_([i for i, _ in ranked]))).all()
+        for g in session.scalars(select(Game).where(Game.id.in_([i for i, _, _ in ranked]))).all()
     }
     return templates.TemplateResponse(
         request,
@@ -329,7 +329,11 @@ def game_page(request: Request, slug: str, session: Session = Depends(get_sessio
             "game": game,
             "summaries": {s.kind: s for s in game.summaries},
             "reviews": reviews,
-            "similar": [by_id[i] for i, _ in ranked if i in by_id],
+            "similar": [
+                {"game": by_id[i], "score": score, "shared": shared}
+                for i, score, shared in ranked
+                if i in by_id
+            ],
         },
     )
 

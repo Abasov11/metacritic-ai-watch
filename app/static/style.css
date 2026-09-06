@@ -411,3 +411,15 @@ img { display: block; max-width: 100%; }
 @media (max-width: 430px) {
   .letsplay__thumb { width: 100%; }
 }
+
+/* ------------------------------------------------------------------- tag chips */
+
+.tags {
+  list-style: none; margin: 0.5rem 0 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 0.25rem;
+}
+.tag {
+  padding: 0.1rem 0.45rem; border-radius: 999px;
+  background: var(--accent-soft); border: 1px solid var(--line);
+  color: #c4b5fd; font-size: 0.7rem; white-space: nowrap;
+}
