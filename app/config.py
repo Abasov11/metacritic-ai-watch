@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     openrouter_model: str = "deepseek/deepseek-v4-flash"
     openrouter_fallback_model: str = "google/gemini-2.5-flash-lite"
     llm_timeout: float = 60.0
+    #: Grades the summaries in `app.eval`. Deliberately a third vendor: neither the
+    #: summariser nor its fallback, so nothing ever marks its own homework.
+    eval_judge_model: str = "openai/gpt-4.1-mini"
     site_url: str = "https://github.com/"  # sent as HTTP-Referer to OpenRouter
     site_title: str = "metacritic-ai-watch"
 

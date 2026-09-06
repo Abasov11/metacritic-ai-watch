@@ -61,8 +61,13 @@ def chat_json(
     *,
     purpose: str = "chat",
     game_id: int | None = None,
+    models: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Ask for one JSON object. Tries the primary model, then the fallback."""
+    """Ask for one JSON object. Tries the primary model, then the fallback.
+
+    `models` overrides that pair — the evaluator uses it to grade with a model that
+    never writes summaries here.
+    """
     if not settings.openrouter_api_key:
         raise LLMError("OPENROUTER_API_KEY is not set")
 
@@ -88,7 +93,7 @@ def chat_json(
     }
 
     last_error: Exception | None = None
-    models = [settings.openrouter_model, settings.openrouter_fallback_model]
+    models = models or [settings.openrouter_model, settings.openrouter_fallback_model]
     for model in models:
         for attempt in range(1, ATTEMPTS_PER_MODEL + 1):
             started = time.monotonic()
