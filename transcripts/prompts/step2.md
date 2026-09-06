@@ -1,0 +1,19 @@
+Шаг 2 — база данных, планировщик обхода и LLM-слой. Веб-интерфейс будет шагом 3, сейчас его не делай. Для кода используй скилл `/ponytail` (YAGNI, stdlib first) — он установлен.
+
+Выбор модели уже сделан, протокол в `docs/MODEL_CHOICE.md` (прочитай): OpenRouter, основная `deepseek/deepseek-v4-flash`, резерв `google/gemini-2.5-flash-lite`. Ключ лежит в `.env` как `OPENROUTER_API_KEY` — файл не печатать и не коммитить, значение не выводить в логи и в ответ.
+
+Что нужно:
+1. `app/db.py` + `app/models.py` (SQLAlchemy 2, SQLite `data/app.db`, WAL). Таблицы: `games` (slug uniq, title, cover_url, description, developer, publisher, release_date, genres json, video_url, metacritic_url, best_metascore, best_userscore — для сортировки, created_at, updated_at, last_crawled_at), `platforms` (game_id, name, metascore, userscore; uniq game+name), `reviews` (game_id, kind critic|user, author, score, text, date; uniq по game+kind+hash текста), `summaries` (game_id, kind critic|user, likes json, dislikes json, summary text, model, updated_at; uniq game+kind), `crawl_runs` (started_at, finished_at, source new_releases|browse:N, planned, processed, failed, status, error), `crawl_items` (run_id, slug, status, error). Создание схемы при старте через `Base.metadata.create_all` — миграции не нужны.
+2. `app/crawler.py` — логика выборки строго по ТЗ (`docs/TASK.md`):
+   - «сегодня» считается по дате в таймзоне из настроек (`TZ`, по умолчанию Europe/Moscow);
+   - первый обход дня → 20 игр из New Releases (`fetch_new_releases`); каждый следующий обход в тот же день → очередная страница browse/new (1, 2, 3, …), счётчик страниц хранится в базе и сбрасывается с новым днём;
+   - из списка отбрасываются слаги, уже обработанные сегодня (`last_crawled_at` сегодня), добираем до 20 со следующей страницы, если не хватает;
+   - для каждой игры: `fetch_game` → upsert в `games`/`platforms`; `fetch_reviews` обоих видов → upsert `reviews`; затем LLM-резюме по каждому виду (если отзывов нет — резюме не делаем, пишем заметку); ошибка одной игры логируется в `crawl_items`, не роняет обход;
+   - функция `run_crawl(reason: str)` возвращает объект run; глобальный замок — два обхода одновременно не идут (второй сразу завершается со статусом skipped).
+3. `app/llm.py` — тонкий клиент OpenRouter поверх httpx (без SDK): `chat_json(prompt, schema_hint) -> dict`, таймаут 60с, 2 попытки на основной модели, потом резерв; заголовки `HTTP-Referer` и `X-Title`. Промпт резюме: по-русски, «что нравится / что не нравится», строгий JSON `{likes:[…], dislikes:[…], summary:"…"}`, вход — до 40 отзывов, каждый обрезан до 700 символов. Учёт стоимости: сохранять `usage.cost` из ответа в таблицу `llm_calls` (game_id, purpose, model, prompt_tokens, completion_tokens, cost, ms, ok, error).
+4. `app/similar.py` — похожие игры без LLM: TF-IDF по тексту «title + genres + developer + platforms + description» (реализация своя на stdlib или scikit-learn — выбери проще), косинус; `similar_games(game_id, k=6)`. Пересчитывать матрицу лениво при изменении числа игр (кеш в памяти).
+5. `app/scheduler.py` — APScheduler: `run_crawl` раз в час (`CRAWL_INTERVAL_MINUTES`, по умолчанию 60), первый запуск через минуту после старта, `misfire_grace_time`. Точка входа `python -m app.crawler --once --limit 3` для ручного прогона с лимитом игр.
+6. Тесты (без сети и без LLM — мокать `fetch_*` и `chat_json`): ротация страниц в пределах дня; сброс на новый день (подменять «сегодня» через параметр/фикстуру); пропуск уже обработанных сегодня; upsert не плодит дублей; ошибка одной игры не роняет обход; выбор резервной модели при ошибке основной.
+7. Живая проверка: `python -m app.crawler --once --limit 3` с реальным сайтом и реальным LLM — приведи дословный вывод: какие игры, сколько платформ/отзывов, текст резюме, стоимость вызовов из `llm_calls`.
+
+Коммить по частям. В конце — отчёт: сделано / проверено запуском / не получилось.

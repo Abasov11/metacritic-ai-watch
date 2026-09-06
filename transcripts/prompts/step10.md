@@ -1,0 +1,6 @@
+Шаг 10 — CI и скриншоты. У проекта теперь есть remote `origin` (GitHub, публичный `Abasov11/metacritic-ai-watch`), push делаю я сам — ты по-прежнему не пушишь.
+
+1. GitHub Actions `.github/workflows/ci.yml`: на push и pull_request в `main` — job `checks` (Python 3.12, кеш pip, `pip install -e .[dev]`, `ruff check .`, `ruff format --check .`, `pytest -q`, `pip-audit`) и job `docker` (сборка образа `docker build`, без публикации, запуск контейнера с `OPENROUTER_API_KEY=x`, ожидание `/healthz` = 200, остановка). Оба job без секретов. `concurrency` по ветке, `timeout-minutes` разумный. Проверь YAML локально (`python -c "import yaml; yaml.safe_load(open(...))"`) — pyyaml поставь в dev, если нет.
+2. Бейдж CI в шапке README (ссылка `https://github.com/Abasov11/metacritic-ai-watch/actions/workflows/ci.yml/badge.svg`).
+3. Скриншоты я снял сам в headless-браузере и положил в `docs/screenshots/` (`list.png`, `game.png`, `monitor.png`, `mobile.png`). Добавь в README раздел «Как это выглядит» после описания веб-интерфейса: три картинки с подписями (список, карточка, мониторинг), мобильный — одной строкой ссылкой.
+4. `ruff check`, `ruff format --check`, `pytest -q` — дословно. Коммит (скриншоты уже закоммичены мной).

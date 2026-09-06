@@ -1,0 +1,375 @@
+2026-09-06 15:46:48,376 INFO __main__: crawl #1 started (manual, source=new_releases)
+2026-09-06 15:46:48,611 INFO httpx: HTTP Request: GET https://www.metacritic.com/game/ "HTTP/1.1 200 OK"
+2026-09-06 15:46:49,506 INFO httpx: HTTP Request: GET https://www.metacritic.com/game/onimusha-way-of-the-sword/ "HTTP/1.1 200 OK"
+2026-09-06 15:46:50,608 INFO httpx: HTTP Request: GET https://backend.metacritic.com/composer/metacritic/pages/games-user-reviews/onimusha-way-of-the-sword/platform/pc/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u "HTTP/1.1 200 OK"
+2026-09-06 15:46:51,483 INFO httpx: HTTP Request: GET https://backend.metacritic.com/composer/metacritic/pages/games-user-reviews/onimusha-way-of-the-sword/platform/xbox-series-x/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u "HTTP/1.1 200 OK"
+2026-09-06 15:46:52,482 INFO httpx: HTTP Request: GET https://backend.metacritic.com/composer/metacritic/pages/games-user-reviews/onimusha-way-of-the-sword/platform/nintendo-switch-2/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u "HTTP/1.1 200 OK"
+2026-09-06 15:46:53,637 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/critic/games/onimusha-way-of-the-sword/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=0&limit=40&filterBySentiment=all&sort=score "HTTP/1.1 200 OK"
+2026-09-06 15:46:54,632 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/critic/games/onimusha-way-of-the-sword/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=10&limit=30&filterBySentiment=all&sort=score "HTTP/1.1 200 OK"
+2026-09-06 15:46:55,679 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/critic/games/onimusha-way-of-the-sword/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=20&limit=20&filterBySentiment=all&sort=score "HTTP/1.1 200 OK"
+2026-09-06 15:46:56,675 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/critic/games/onimusha-way-of-the-sword/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=30&limit=10&filterBySentiment=all&sort=score "HTTP/1.1 200 OK"
+2026-09-06 15:46:57,769 INFO httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-06 15:47:08,853 ERROR app.llm: could not record llm call
+Traceback (most recent call last):
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: database is locked
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/srv/skytec/metacritic-ai-watch/app/llm.py", line 52, in _record
+    session.commit()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2035, in commit
+    trans.commit(_to_root=True)
+  File "<string>", line 2, in commit
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 1316, in commit
+    self._prepare_impl()
+  File "<string>", line 2, in _prepare_impl
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 1290, in _prepare_impl
+    self.session.flush()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4353, in flush
+    self._flush(objects)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4488, in _flush
+    with util.safe_reraise():
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4449, in _flush
+    flush_context.execute()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/unitofwork.py", line 465, in execute
+    rec.execute(self)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/unitofwork.py", line 641, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/persistence.py", line 94, in save_obj
+    _emit_insert_statements(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/persistence.py", line 1234, in _emit_insert_statements
+    result = connection.execute(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+[SQL: INSERT INTO llm_calls (created_at, game_id, purpose, model, prompt_tokens, completion_tokens, cost, ms, ok, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('2026-09-06 15:47:03.841684', 1, 'summary:critic', 'deepseek/deepseek-v4-flash', 3813, 756, 0.00071355, 7134, 1, None)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-09-06 15:47:09,263 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/user/games/onimusha-way-of-the-sword/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=0&limit=40&filterBySentiment=all&sort=date "HTTP/1.1 200 OK"
+2026-09-06 15:47:09,919 INFO httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-06 15:47:23,204 ERROR app.llm: could not record llm call
+Traceback (most recent call last):
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: database is locked
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/srv/skytec/metacritic-ai-watch/app/llm.py", line 52, in _record
+    session.commit()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2035, in commit
+    trans.commit(_to_root=True)
+  File "<string>", line 2, in commit
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 1316, in commit
+    self._prepare_impl()
+  File "<string>", line 2, in _prepare_impl
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 1290, in _prepare_impl
+    self.session.flush()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4353, in flush
+    self._flush(objects)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4488, in _flush
+    with util.safe_reraise():
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4449, in _flush
+    flush_context.execute()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/unitofwork.py", line 465, in execute
+    rec.execute(self)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/unitofwork.py", line 641, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/persistence.py", line 94, in save_obj
+    _emit_insert_statements(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/persistence.py", line 1234, in _emit_insert_statements
+    result = connection.execute(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+[SQL: INSERT INTO llm_calls (created_at, game_id, purpose, model, prompt_tokens, completion_tokens, cost, ms, ok, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('2026-09-06 15:47:18.192302', 1, 'summary:user', 'deepseek/deepseek-v4-flash', 2635, 962, 0.00036508472, 8910, 1, None)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-09-06 15:47:23,297 INFO httpx: HTTP Request: GET https://www.metacritic.com/game/nba-2k27/ "HTTP/1.1 200 OK"
+2026-09-06 15:47:24,296 INFO httpx: HTTP Request: GET https://backend.metacritic.com/composer/metacritic/pages/games-user-reviews/nba-2k27/platform/pc/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u "HTTP/1.1 200 OK"
+2026-09-06 15:47:25,253 INFO httpx: HTTP Request: GET https://backend.metacritic.com/composer/metacritic/pages/games-user-reviews/nba-2k27/platform/playstation-5/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u "HTTP/1.1 200 OK"
+2026-09-06 15:47:26,256 INFO httpx: HTTP Request: GET https://backend.metacritic.com/composer/metacritic/pages/games-user-reviews/nba-2k27/platform/nintendo-switch-2/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u "HTTP/1.1 200 OK"
+2026-09-06 15:47:27,253 INFO httpx: HTTP Request: GET https://backend.metacritic.com/composer/metacritic/pages/games-user-reviews/nba-2k27/platform/xbox-series-x/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u "HTTP/1.1 200 OK"
+2026-09-06 15:47:28,410 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/critic/games/nba-2k27/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=0&limit=40&filterBySentiment=all&sort=score "HTTP/1.1 200 OK"
+2026-09-06 15:47:29,188 INFO httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-06 15:47:50,787 ERROR app.llm: could not record llm call
+Traceback (most recent call last):
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: database is locked
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/srv/skytec/metacritic-ai-watch/app/llm.py", line 52, in _record
+    session.commit()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2035, in commit
+    trans.commit(_to_root=True)
+  File "<string>", line 2, in commit
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 1316, in commit
+    self._prepare_impl()
+  File "<string>", line 2, in _prepare_impl
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 1290, in _prepare_impl
+    self.session.flush()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4353, in flush
+    self._flush(objects)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4488, in _flush
+    with util.safe_reraise():
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4449, in _flush
+    flush_context.execute()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/unitofwork.py", line 465, in execute
+    rec.execute(self)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/unitofwork.py", line 641, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/persistence.py", line 94, in save_obj
+    _emit_insert_statements(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/persistence.py", line 1234, in _emit_insert_statements
+    result = connection.execute(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+[SQL: INSERT INTO llm_calls (created_at, game_id, purpose, model, prompt_tokens, completion_tokens, cost, ms, ok, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('2026-09-06 15:47:45.773942', 2, 'summary:critic', 'deepseek/deepseek-v4-flash', 1149, 1903, 0.0003967964, 17354, 1, None)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-09-06 15:47:50,858 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/user/games/nba-2k27/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=0&limit=40&filterBySentiment=all&sort=date "HTTP/1.1 200 OK"
+2026-09-06 15:47:50,859 WARNING app.scraper.metacritic: reviews API returned nothing for nba-2k27/user, falling back to HTML
+2026-09-06 15:47:52,233 INFO httpx: HTTP Request: GET https://www.metacritic.com/game/nba-2k27/user-reviews/ "HTTP/1.1 200 OK"
+2026-09-06 15:47:52,842 INFO httpx: HTTP Request: GET https://www.metacritic.com/game/the-blood-of-dawnwalker/ "HTTP/1.1 200 OK"
+2026-09-06 15:47:53,839 INFO httpx: HTTP Request: GET https://backend.metacritic.com/composer/metacritic/pages/games-user-reviews/the-blood-of-dawnwalker/platform/pc/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u "HTTP/1.1 200 OK"
+2026-09-06 15:47:54,820 INFO httpx: HTTP Request: GET https://backend.metacritic.com/composer/metacritic/pages/games-user-reviews/the-blood-of-dawnwalker/platform/xbox-series-x/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u "HTTP/1.1 200 OK"
+2026-09-06 15:47:56,014 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/critic/games/the-blood-of-dawnwalker/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=0&limit=40&filterBySentiment=all&sort=score "HTTP/1.1 200 OK"
+2026-09-06 15:47:57,009 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/critic/games/the-blood-of-dawnwalker/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=10&limit=30&filterBySentiment=all&sort=score "HTTP/1.1 200 OK"
+2026-09-06 15:47:57,980 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/critic/games/the-blood-of-dawnwalker/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=20&limit=20&filterBySentiment=all&sort=score "HTTP/1.1 200 OK"
+2026-09-06 15:47:58,986 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/critic/games/the-blood-of-dawnwalker/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=30&limit=10&filterBySentiment=all&sort=score "HTTP/1.1 200 OK"
+2026-09-06 15:48:00,792 INFO httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-06 15:48:23,059 ERROR app.llm: could not record llm call
+Traceback (most recent call last):
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: database is locked
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/srv/skytec/metacritic-ai-watch/app/llm.py", line 52, in _record
+    session.commit()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2035, in commit
+    trans.commit(_to_root=True)
+  File "<string>", line 2, in commit
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 1316, in commit
+    self._prepare_impl()
+  File "<string>", line 2, in _prepare_impl
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 1290, in _prepare_impl
+    self.session.flush()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4353, in flush
+    self._flush(objects)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4488, in _flush
+    with util.safe_reraise():
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4449, in _flush
+    flush_context.execute()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/unitofwork.py", line 465, in execute
+    rec.execute(self)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/unitofwork.py", line 641, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/persistence.py", line 94, in save_obj
+    _emit_insert_statements(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/persistence.py", line 1234, in _emit_insert_statements
+    result = connection.execute(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+[SQL: INSERT INTO llm_calls (created_at, game_id, purpose, model, prompt_tokens, completion_tokens, cost, ms, ok, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('2026-09-06 15:48:18.048009', 3, 'summary:critic', 'deepseek/deepseek-v4-flash', 3524, 836, 0.00041682312, 19040, 1, None)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-09-06 15:48:23,490 INFO httpx: HTTP Request: GET https://backend.metacritic.com/reviews/metacritic/user/games/the-blood-of-dawnwalker/web?apiKey=1MOZgmNFxvmljaQR1X9KAij9Mo4xAY3u&offset=0&limit=40&filterBySentiment=all&sort=date "HTTP/1.1 200 OK"
+2026-09-06 15:48:24,509 INFO httpx: HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-06 15:48:47,629 ERROR app.llm: could not record llm call
+Traceback (most recent call last):
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: database is locked
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/srv/skytec/metacritic-ai-watch/app/llm.py", line 52, in _record
+    session.commit()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2035, in commit
+    trans.commit(_to_root=True)
+  File "<string>", line 2, in commit
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 1316, in commit
+    self._prepare_impl()
+  File "<string>", line 2, in _prepare_impl
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 1290, in _prepare_impl
+    self.session.flush()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4353, in flush
+    self._flush(objects)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4488, in _flush
+    with util.safe_reraise():
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 4449, in _flush
+    flush_context.execute()
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/unitofwork.py", line 465, in execute
+    rec.execute(self)
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/unitofwork.py", line 641, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/persistence.py", line 94, in save_obj
+    _emit_insert_statements(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/orm/persistence.py", line 1234, in _emit_insert_statements
+    result = connection.execute(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/srv/skytec/metacritic-ai-watch/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+[SQL: INSERT INTO llm_calls (created_at, game_id, purpose, model, prompt_tokens, completion_tokens, cost, ms, ok, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('2026-09-06 15:48:42.615374', 3, 'summary:user', 'deepseek/deepseek-v4-flash', 3343, 663, 0.000643659, 19098, 1, None)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-09-06 15:48:47,654 INFO __main__: crawl #1 done: 3 processed, 0 failed
+run #1 source=new_releases status=ok planned=3 processed=3 failed=0
