@@ -10,18 +10,54 @@ from app import crawler, youtube
 from app.models import Base, Game, LetsPlay
 
 SEARCH_RESULTS = [
-    {"id": "trailer1", "title": "Silksong — Official Launch Trailer", "duration": 300,
-     "view_count": 9_000_000, "channel": "IGN", "description": "Hollow Knight Silksong"},
-    {"id": "short1", "title": "Hollow Knight Silksong first boss", "duration": 45,
-     "view_count": 5_000_000, "channel": "Clips", "description": "silksong"},
-    {"id": "review1", "title": "Hollow Knight Silksong Review", "duration": 900,
-     "view_count": 3_000_000, "channel": "Critic", "description": "silksong review"},
-    {"id": "other1", "title": "Elden Ring let's play part 1", "duration": 3600,
-     "view_count": 8_000_000, "channel": "Someone", "description": "elden ring"},
-    {"id": "good1", "title": "Hollow Knight Silksong — playthrough part 1", "duration": 3600,
-     "view_count": 120_000, "channel": "Small", "description": "silksong blind run"},
-    {"id": "good2", "title": "Playing Hollow Knight: Silksong for the first time",
-     "duration": 5400, "view_count": 480_000, "channel": "Big", "description": "silksong"},
+    {
+        "id": "trailer1",
+        "title": "Silksong — Official Launch Trailer",
+        "duration": 300,
+        "view_count": 9_000_000,
+        "channel": "IGN",
+        "description": "Hollow Knight Silksong",
+    },
+    {
+        "id": "short1",
+        "title": "Hollow Knight Silksong first boss",
+        "duration": 45,
+        "view_count": 5_000_000,
+        "channel": "Clips",
+        "description": "silksong",
+    },
+    {
+        "id": "review1",
+        "title": "Hollow Knight Silksong Review",
+        "duration": 900,
+        "view_count": 3_000_000,
+        "channel": "Critic",
+        "description": "silksong review",
+    },
+    {
+        "id": "other1",
+        "title": "Elden Ring let's play part 1",
+        "duration": 3600,
+        "view_count": 8_000_000,
+        "channel": "Someone",
+        "description": "elden ring",
+    },
+    {
+        "id": "good1",
+        "title": "Hollow Knight Silksong — playthrough part 1",
+        "duration": 3600,
+        "view_count": 120_000,
+        "channel": "Small",
+        "description": "silksong blind run",
+    },
+    {
+        "id": "good2",
+        "title": "Playing Hollow Knight: Silksong for the first time",
+        "duration": 5400,
+        "view_count": 480_000,
+        "channel": "Big",
+        "description": "silksong",
+    },
 ]
 
 
@@ -74,8 +110,13 @@ def test_real_playthroughs_are_kept():
 
 
 def test_a_game_name_in_the_description_is_enough():
-    entry = {"id": "x", "title": "Blind run, episode 1", "duration": 2000,
-             "view_count": 10, "description": "Hollow Knight Silksong gameplay"}
+    entry = {
+        "id": "x",
+        "title": "Blind run, episode 1",
+        "duration": 2000,
+        "view_count": 10,
+        "description": "Hollow Knight Silksong gameplay",
+    }
     assert youtube.is_letsplay(entry, "Hollow Knight: Silksong") is True
 
 
@@ -169,8 +210,11 @@ def llm(monkeypatch):
 
     def chat_json(prompt, schema, *, purpose, game_id=None):
         calls.append((purpose, game_id, prompt))
-        return {"verdict": "Блогеру понравилось.", "highlights": ["бои", "музыка"],
-                "_model": "test/model"}
+        return {
+            "verdict": "Блогеру понравилось.",
+            "highlights": ["бои", "музыка"],
+            "_model": "test/model",
+        }
 
     monkeypatch.setattr(youtube, "chat_json", chat_json)
     return calls
@@ -183,8 +227,7 @@ def test_build_letsplay_happy_path(search, llm, monkeypatch):
     assert record["video_id"] == "good2"
     assert record["transcript_source"] == "subtitles"
     assert record["transcript_chars"] == len("речь блогера " * 50)
-    assert record["verdict"] == {"verdict": "Блогеру понравилось.",
-                                 "highlights": ["бои", "музыка"]}
+    assert record["verdict"] == {"verdict": "Блогеру понравилось.", "highlights": ["бои", "музыка"]}
     assert record["model"] == "test/model"
     assert record["error"] is None
     assert llm[0][0] == "letsplay" and llm[0][1] == 7
@@ -249,11 +292,19 @@ def game_of(factory) -> Game:
 
 def test_the_stage_stores_a_record(db, monkeypatch):
     monkeypatch.setattr(
-        crawler.youtube, "build_letsplay",
+        crawler.youtube,
+        "build_letsplay",
         lambda title, game_id, budget=None: {
-            "video_id": "abc", "url": "https://y/abc", "title": "Run", "channel": "Ch",
-            "view_count": 5, "transcript_source": "subtitles", "transcript_chars": 10,
-            "verdict": {"verdict": "ок", "highlights": []}, "model": "m", "error": None,
+            "video_id": "abc",
+            "url": "https://y/abc",
+            "title": "Run",
+            "channel": "Ch",
+            "view_count": 5,
+            "transcript_source": "subtitles",
+            "transcript_chars": 10,
+            "verdict": {"verdict": "ок", "highlights": []},
+            "model": "m",
+            "error": None,
         },
     )
     with db() as session:
@@ -261,7 +312,9 @@ def test_the_stage_stores_a_record(db, monkeypatch):
         assert crawler.process_letsplay(session, game) is None
         stored = session.scalar(select(LetsPlay))
         assert (stored.video_id, stored.channel, stored.transcript_source) == (
-            "abc", "Ch", "subtitles"
+            "abc",
+            "Ch",
+            "subtitles",
         )
 
 
@@ -270,8 +323,13 @@ def test_a_fresh_letsplay_is_not_recomputed(db, monkeypatch):
 
     def build(title, game_id, budget=None):
         calls.append(title)
-        return {"video_id": "abc", "transcript_source": "subtitles", "error": None,
-                "verdict": {"verdict": "ок"}, "transcript_chars": 5}
+        return {
+            "video_id": "abc",
+            "transcript_source": "subtitles",
+            "error": None,
+            "verdict": {"verdict": "ок"},
+            "transcript_chars": 5,
+        }
 
     monkeypatch.setattr(crawler.youtube, "build_letsplay", build)
     with db() as session:
@@ -286,11 +344,17 @@ def test_a_stale_letsplay_is_recomputed(db, monkeypatch):
 
     calls = []
     monkeypatch.setattr(
-        crawler.youtube, "build_letsplay",
+        crawler.youtube,
+        "build_letsplay",
         lambda title, game_id, budget=None: (
             calls.append(title),
-            {"video_id": "abc", "transcript_source": "subtitles", "error": None,
-             "verdict": {}, "transcript_chars": 5},
+            {
+                "video_id": "abc",
+                "transcript_source": "subtitles",
+                "error": None,
+                "verdict": {},
+                "transcript_chars": 5,
+            },
         )[1],
     )
     with db() as session:
@@ -306,11 +370,17 @@ def test_a_stale_letsplay_is_recomputed(db, monkeypatch):
 def test_a_failed_lookup_is_retried_next_time(db, monkeypatch):
     calls = []
     monkeypatch.setattr(
-        crawler.youtube, "build_letsplay",
+        crawler.youtube,
+        "build_letsplay",
         lambda title, game_id, budget=None: (
             calls.append(title),
-            {"video_id": None, "transcript_source": "none", "transcript_chars": 0,
-             "verdict": {}, "error": "нет расшифровки"},
+            {
+                "video_id": None,
+                "transcript_source": "none",
+                "transcript_chars": 0,
+                "verdict": {},
+                "error": "нет расшифровки",
+            },
         )[1],
     )
     with db() as session:

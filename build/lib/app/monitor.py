@@ -139,7 +139,9 @@ def _today_totals() -> dict[str, Any]:
                 if run_ids
                 else 0
             )
-            calls = session.scalars(select(LlmCall).where(LlmCall.created_at >= since_utc)).all()
+            calls = session.scalars(
+                select(LlmCall).where(LlmCall.created_at >= since_utc)
+            ).all()
             return {
                 "runs": len(runs),
                 "games": sum(r.processed for r in runs),

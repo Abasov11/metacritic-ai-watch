@@ -76,16 +76,25 @@ def scraper(monkeypatch):
     monkeypatch.setattr(crawler.metacritic, "fetch_new_releases", fetch_new_releases)
     monkeypatch.setattr(crawler.metacritic, "fetch_browse_new", fetch_browse_new)
     monkeypatch.setattr(crawler.metacritic, "fetch_game", fetch_game)
+
     def cache_cover(slug, url, client=None, force=False):
         calls["covers"].append((slug, url))
         return f"{slug}.jpg"
 
     def build_letsplay(title, game_id, budget=None):
         calls["letsplays"].append(title)
-        return {"video_id": f"vid-{game_id}", "url": "https://y/x", "title": "Run",
-                "channel": "Ch", "view_count": 1, "transcript_source": "subtitles",
-                "transcript_chars": 10, "verdict": {"verdict": "ок", "highlights": []},
-                "model": "test/model", "error": None}
+        return {
+            "video_id": f"vid-{game_id}",
+            "url": "https://y/x",
+            "title": "Run",
+            "channel": "Ch",
+            "view_count": 1,
+            "transcript_source": "subtitles",
+            "transcript_chars": 10,
+            "verdict": {"verdict": "ок", "highlights": []},
+            "model": "test/model",
+            "error": None,
+        }
 
     monkeypatch.setattr(crawler.metacritic, "fetch_reviews", fetch_reviews)
     # Covers and let's plays have their own tests; here neither may reach the network.

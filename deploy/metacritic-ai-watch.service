@@ -1,0 +1,35 @@
+# Install: copy to /etc/systemd/system/, then
+#   sudo systemctl daemon-reload && sudo systemctl enable --now metacritic-ai-watch
+[Unit]
+Description=Metacritic AI Watch — hourly game crawler and web catalogue
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/srv/skytec/metacritic-ai-watch
+EnvironmentFile=/srv/skytec/metacritic-ai-watch/.env
+ExecStart=/srv/skytec/metacritic-ai-watch/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010
+Restart=always
+RestartSec=5
+# The scheduler owns its own timing; give a crawl in flight a moment to finish.
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+MemoryMax=1G
+# Whisper needs far more than this. Raise it if YOUTUBE_WHISPER_ENABLED=1.
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/srv/skytec/metacritic-ai-watch/data
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=metacritic-ai-watch
+
+[Install]
+WantedBy=multi-user.target

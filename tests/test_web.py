@@ -15,18 +15,46 @@ from app.models import Base, CrawlRun, Game, Platform, Review, Summary
 
 SEED = [
     # slug, title, developer, metascore, userscore, platforms, genres, description
-    ("silksong", "Hollow Knight: Silksong", "Team Cherry", 90, 8.9,
-     [("PC", 90, 8.9), ("Nintendo Switch", 94, 9.0)], ["Metroidvania"],
-     "Explore a vast haunted kingdom as Hornet, a lethal bug knight."),
-    ("dawnwalker", "The Blood of Dawnwalker", "Rebel Wolves", 88, 8.5,
-     [("PC", 84, 8.5), ("PlayStation 5", 88, 8.2)], ["Action RPG"],
-     "Explore a haunted medieval kingdom ruled by vampires."),
-    ("nba", "NBA 2K27", "Visual Concepts", 55, 3.1,
-     [("PlayStation 5", 55, 3.1)], ["Basketball Sim"],
-     "Basketball simulation with league seasons and player careers."),
-    ("tiny", "Tiny Untested Game", "Solo Dev", None, None,
-     [("PC", None, None)], ["Puzzle"],
-     "A small puzzle about rotating coloured shapes."),
+    (
+        "silksong",
+        "Hollow Knight: Silksong",
+        "Team Cherry",
+        90,
+        8.9,
+        [("PC", 90, 8.9), ("Nintendo Switch", 94, 9.0)],
+        ["Metroidvania"],
+        "Explore a vast haunted kingdom as Hornet, a lethal bug knight.",
+    ),
+    (
+        "dawnwalker",
+        "The Blood of Dawnwalker",
+        "Rebel Wolves",
+        88,
+        8.5,
+        [("PC", 84, 8.5), ("PlayStation 5", 88, 8.2)],
+        ["Action RPG"],
+        "Explore a haunted medieval kingdom ruled by vampires.",
+    ),
+    (
+        "nba",
+        "NBA 2K27",
+        "Visual Concepts",
+        55,
+        3.1,
+        [("PlayStation 5", 55, 3.1)],
+        ["Basketball Sim"],
+        "Basketball simulation with league seasons and player careers.",
+    ),
+    (
+        "tiny",
+        "Tiny Untested Game",
+        "Solo Dev",
+        None,
+        None,
+        [("PC", None, None)],
+        ["Puzzle"],
+        "A small puzzle about rotating coloured shapes.",
+    ),
 ]
 
 
@@ -45,26 +73,47 @@ def client(monkeypatch, tmp_path):
     with factory() as session:
         for i, (slug, title, dev, ms, us, platforms, genres, description) in enumerate(SEED):
             game = Game(
-                slug=slug, title=title, developer=dev, publisher="Pub", genres=genres,
-                release_date="2026-09-0" + str(i + 1), description=description,
-                cover_url=f"https://img.test/{slug}.jpg", metacritic_url=f"https://mc.test/{slug}",
+                slug=slug,
+                title=title,
+                developer=dev,
+                publisher="Pub",
+                genres=genres,
+                release_date="2026-09-0" + str(i + 1),
+                description=description,
+                cover_url=f"https://img.test/{slug}.jpg",
+                metacritic_url=f"https://mc.test/{slug}",
                 video_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ" if i == 0 else None,
-                best_metascore=ms, best_userscore=us, created_at=base + timedelta(days=i),
+                best_metascore=ms,
+                best_userscore=us,
+                created_at=base + timedelta(days=i),
             )
             session.add(game)
             session.flush()
             for name, pms, pus in platforms:
                 session.add(Platform(game_id=game.id, name=name, metascore=pms, userscore=pus))
             if slug != "tiny":
-                session.add(Summary(
-                    game_id=game.id, kind="critic", likes=["хороший бой"],
-                    dislikes=["мало контента"], summary="Итог критиков.",
-                    model="test/model", review_count=2,
-                ))
-                session.add(Review(
-                    game_id=game.id, kind="critic", author="IGN", score=90.0,
-                    text="A great game indeed.", text_hash=f"h-{slug}", date="2026-09-01",
-                ))
+                session.add(
+                    Summary(
+                        game_id=game.id,
+                        kind="critic",
+                        likes=["хороший бой"],
+                        dislikes=["мало контента"],
+                        summary="Итог критиков.",
+                        model="test/model",
+                        review_count=2,
+                    )
+                )
+                session.add(
+                    Review(
+                        game_id=game.id,
+                        kind="critic",
+                        author="IGN",
+                        score=90.0,
+                        text="A great game indeed.",
+                        text_hash=f"h-{slug}",
+                        date="2026-09-01",
+                    )
+                )
         session.add(CrawlRun(source="new_releases", status="ok", processed=4, planned=4))
         session.commit()
 
@@ -73,8 +122,11 @@ def client(monkeypatch, tmp_path):
 
 
 class _NullScheduler:
-    def start(self): pass
-    def shutdown(self, wait=True): pass
+    def start(self):
+        pass
+
+    def shutdown(self, wait=True):
+        pass
 
 
 def slugs(payload) -> list[str]:
@@ -242,12 +294,20 @@ def test_letsplay_block_renders_the_video_and_the_verdict(client):
 
     with main.SessionLocal() as session:
         game = session.scalar(select(Game).where(Game.slug == "silksong"))
-        session.add(LetsPlay(
-            game_id=game.id, video_id="abc12345678", url="https://youtu.be/abc12345678",
-            title="Silksong blind run", channel="SomeChannel", view_count=1234567,
-            transcript_source="subtitles", transcript_chars=8421, model="test/model",
-            verdict={"verdict": "Блогер в восторге.", "highlights": ["бои", "музыка"]},
-        ))
+        session.add(
+            LetsPlay(
+                game_id=game.id,
+                video_id="abc12345678",
+                url="https://youtu.be/abc12345678",
+                title="Silksong blind run",
+                channel="SomeChannel",
+                view_count=1234567,
+                transcript_source="subtitles",
+                transcript_chars=8421,
+                model="test/model",
+                verdict={"verdict": "Блогер в восторге.", "highlights": ["бои", "музыка"]},
+            )
+        )
         session.commit()
 
     body = client.get("/game/silksong").text
@@ -266,12 +326,20 @@ def test_letsplay_block_is_honest_about_a_missing_transcript(client):
 
     with main.SessionLocal() as session:
         game = session.scalar(select(Game).where(Game.slug == "nba"))
-        session.add(LetsPlay(
-            game_id=game.id, video_id="zzz11111111", url="https://youtu.be/zzz11111111",
-            title="NBA 2K27 season", channel="Hoops", view_count=42,
-            transcript_source="none", transcript_chars=0, verdict={},
-            error="YouTube блокирует запросы с этого IP",
-        ))
+        session.add(
+            LetsPlay(
+                game_id=game.id,
+                video_id="zzz11111111",
+                url="https://youtu.be/zzz11111111",
+                title="NBA 2K27 season",
+                channel="Hoops",
+                view_count=42,
+                transcript_source="none",
+                transcript_chars=0,
+                verdict={},
+                error="YouTube блокирует запросы с этого IP",
+            )
+        )
         session.commit()
 
     body = client.get("/game/nba").text
@@ -288,12 +356,20 @@ def test_api_exposes_the_letsplay(client):
 
     with main.SessionLocal() as session:
         game = session.scalar(select(Game).where(Game.slug == "dawnwalker"))
-        session.add(LetsPlay(
-            game_id=game.id, video_id="v1", url="https://youtu.be/v1", title="Run",
-            channel="Ch", view_count=10, transcript_source="whisper",
-            transcript_chars=100, verdict={"verdict": "ок", "highlights": []},
-            model="test/model",
-        ))
+        session.add(
+            LetsPlay(
+                game_id=game.id,
+                video_id="v1",
+                url="https://youtu.be/v1",
+                title="Run",
+                channel="Ch",
+                view_count=10,
+                transcript_source="whisper",
+                transcript_chars=100,
+                verdict={"verdict": "ок", "highlights": []},
+                model="test/model",
+            )
+        )
         session.commit()
 
     payload = client.get("/api/games/dawnwalker").json()

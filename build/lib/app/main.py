@@ -43,7 +43,9 @@ SORTS = {
 }
 DEFAULT_SORT = "metascore_desc"
 
-_YOUTUBE_RE = re.compile(r"(?:youtube\.com/(?:watch\?v=|embed/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})")
+_YOUTUBE_RE = re.compile(
+    r"(?:youtube\.com/(?:watch\?v=|embed/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})"
+)
 
 
 def youtube_embed(url: str | None) -> str | None:
@@ -91,11 +93,15 @@ def query_games(
     statement = select(Game)
     if q.strip():
         needle = f"%{q.strip()}%"
-        statement = statement.where(or_(Game.title.ilike(needle), Game.developer.ilike(needle)))
+        statement = statement.where(
+            or_(Game.title.ilike(needle), Game.developer.ilike(needle))
+        )
     if platforms:
         statement = statement.join(Platform).where(Platform.name.in_(platforms)).distinct()
 
-    total = session.scalar(select(func.count()).select_from(statement.order_by(None).subquery()))
+    total = session.scalar(
+        select(func.count()).select_from(statement.order_by(None).subquery())
+    )
 
     column, direction = SORTS.get(sort, SORTS[DEFAULT_SORT])
     # Games without a score belong at the end of either direction, not on top.

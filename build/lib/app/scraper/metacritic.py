@@ -32,7 +32,9 @@ ReviewKind = Literal["critic", "user"]
 
 NEW_RELEASES_COUNT = 20
 
-_JSON_LD_RE = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.DOTALL)
+_JSON_LD_RE = re.compile(
+    r'<script type="application/ld\+json">(.*?)</script>', re.DOTALL
+)
 _SLUG_RE = re.compile(r"^/game/([a-z0-9\-]+)/?$")
 
 

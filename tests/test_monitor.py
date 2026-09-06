@@ -33,16 +33,20 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "init_db", lambda: None)
     monkeypatch.setattr(main, "create_scheduler", lambda: _NullScheduler())
     with factory() as session:
-        session.add(CrawlRun(source="new_releases", reason="scheduled", status="ok",
-                             planned=3, processed=3))
+        session.add(
+            CrawlRun(source="new_releases", reason="scheduled", status="ok", planned=3, processed=3)
+        )
         session.commit()
     with TestClient(app=main.app) as test_client:
         yield test_client
 
 
 class _NullScheduler:
-    def start(self): pass
-    def shutdown(self, wait=True): pass
+    def start(self):
+        pass
+
+    def shutdown(self, wait=True):
+        pass
 
 
 # ---------------------------------------------------------------------- the bus
@@ -78,8 +82,14 @@ def test_youtube_worker_is_reported_as_not_wired_up():
 
 def test_run_lifecycle_tracks_progress():
     assert monitor.is_busy() is False
-    monitor.emit(type="run_start", worker="crawler", status="busy", run_id=7,
-                 source="browse:2", reason="manual")
+    monitor.emit(
+        type="run_start",
+        worker="crawler",
+        status="busy",
+        run_id=7,
+        source="browse:2",
+        reason="manual",
+    )
     monitor.emit(type="run_planned", worker="crawler", status="busy", planned=3)
     monitor.emit(type="game_done", worker="crawler", status="busy", slug="a")
     monitor.emit(type="game_failed", worker="crawler", status="busy", slug="b")
@@ -125,14 +135,21 @@ def test_today_totals_come_from_the_database(client):
 
 
 def test_monitor_page_renders_workers_runs_and_log(client):
-    monitor.emit(type="run_start", worker="crawler", status="busy", run_id=1,
-                 source="new_releases", reason="manual", message="обход #1 начат")
+    monitor.emit(
+        type="run_start",
+        worker="crawler",
+        status="busy",
+        run_id=1,
+        source="new_releases",
+        reason="manual",
+        message="обход #1 начат",
+    )
     body = client.get("/monitor").text
     assert "Мониторинг" in body
     for name in monitor.WORKERS:
         assert f'data-worker="{name}"' in body
-    assert "обход #1 начат" in body       # live log seeded from the snapshot
-    assert "new_releases" in body          # recent runs table
+    assert "обход #1 начат" in body  # live log seeded from the snapshot
+    assert "new_releases" in body  # recent runs table
     assert "Запустить обход сейчас" in body
 
 
@@ -204,8 +221,14 @@ def read_sse(client, url="/monitor/stream", max_lines=200):
 def test_stream_opens_with_a_state_snapshot(client, monkeypatch):
     # The stream is time-bounded so the test never blocks; shorten it to a blink.
     monkeypatch.setattr(main, "SSE_MAX_SECONDS", 1.0)
-    monitor.emit(type="run_start", worker="crawler", status="busy", run_id=3,
-                 source="browse:1", reason="manual")
+    monitor.emit(
+        type="run_start",
+        worker="crawler",
+        status="busy",
+        run_id=3,
+        source="browse:1",
+        reason="manual",
+    )
     frames = read_sse(client)
 
     event, payload = frames[0]
@@ -222,8 +245,13 @@ def test_stream_pushes_events_emitted_after_it_opened(client, monkeypatch):
 
     def emit_soon():
         __import__("time").sleep(0.4)
-        monitor.emit(type="game_done", worker="crawler", status="busy", slug="late-game",
-                     message="late-game: ok")
+        monitor.emit(
+            type="game_done",
+            worker="crawler",
+            status="busy",
+            slug="late-game",
+            message="late-game: ok",
+        )
 
     threading.Thread(target=emit_soon, daemon=True).start()
     frames = read_sse(client)
@@ -236,7 +264,13 @@ def test_stream_pushes_events_emitted_after_it_opened(client, monkeypatch):
 
 def test_skipped_runs_do_not_count_towards_today(client):
     with main.SessionLocal() as session:
-        session.add(CrawlRun(source="-", reason="scheduled", status="skipped",
-                             error="another crawl is already running"))
+        session.add(
+            CrawlRun(
+                source="-",
+                reason="scheduled",
+                status="skipped",
+                error="another crawl is already running",
+            )
+        )
         session.commit()
     assert client.get("/healthz").json()["today"]["runs"] == 1

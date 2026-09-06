@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+  <form class="panel" id="filters" role="search"
+        hx-get="/" hx-target="#results" hx-swap="outerHTML"
+        hx-push-url="true" hx-trigger="input changed delay:300ms, change, search">
+    <div class="panel__row">
+      <div class="field field--grow">
+        <label class="field__label" for="q">Поиск по названию</label>
+        <input class="field__input" type="search" id="q" name="q" value="{{ q }}"
+               placeholder="например, Silksong" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="field__label" for="sort">Сортировка</label>
+        <select class="field__input" id="sort" name="sort">
+          <option value="metascore_desc" {% if sort == "metascore_desc" %}selected{% endif %}>Metascore ↓</option>
+          <option value="metascore_asc"  {% if sort == "metascore_asc"  %}selected{% endif %}>Metascore ↑</option>
+          <option value="userscore_desc" {% if sort == "userscore_desc" %}selected{% endif %}>Userscore ↓</option>
+          <option value="userscore_asc"  {% if sort == "userscore_asc"  %}selected{% endif %}>Userscore ↑</option>
+          <option value="added_desc"     {% if sort == "added_desc"     %}selected{% endif %}>Дата добавления</option>
+        </select>
+      </div>
+    </div>
+
+    {% if platform_names %}
+      <fieldset class="platforms">
+        <legend class="field__label">Платформы</legend>
+        {% for name in platform_names %}
+          <label class="chip">
+            <input type="checkbox" name="platform" value="{{ name }}"
+                   {% if name in selected_platforms %}checked{% endif %}>
+            <span>{{ name }}</span>
+          </label>
+        {% endfor %}
+      </fieldset>
+    {% endif %}
+
+    <noscript><button class="btn" type="submit">Применить</button></noscript>
+  </form>
+
+  {% include "_results.html" %}
+{% endblock %}

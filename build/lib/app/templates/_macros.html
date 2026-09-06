@@ -1,0 +1,26 @@
+{# Metacritic's own thresholds: green >= 75, yellow 50-74, red < 50. #}
+{% macro score_class(value, max) %}
+  {%- if value is none -%}tbd
+  {%- elif value >= 0.75 * max -%}good
+  {%- elif value >= 0.50 * max -%}mixed
+  {%- else -%}bad
+  {%- endif -%}
+{% endmacro %}
+
+{% macro score_badge(value, max, label) %}
+  <span class="score score--{{ score_class(value, max) | trim }}"
+        title="{{ label }}: {{ value if value is not none else 'нет оценки' }}">
+    {{ value if value is not none else 'tbd' }}
+  </span>
+{% endmacro %}
+
+{# Prefer our own cached copy; metacritic.com answers 403 for hotlinked covers. #}
+{% macro cover(game, sizes) %}
+  {% set src = "/covers/" ~ game.cover_path if game.cover_path else game.cover_url %}
+  {% if src %}
+    <img class="cover__img" src="{{ src }}" alt="Обложка: {{ game.title }}"
+         loading="lazy" sizes="{{ sizes }}">
+  {% else %}
+    <span class="cover__empty" aria-hidden="true">{{ game.title[:1] }}</span>
+  {% endif %}
+{% endmacro %}

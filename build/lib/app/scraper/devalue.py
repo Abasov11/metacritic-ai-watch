@@ -22,7 +22,9 @@ POSITIVE_INFINITY = -4
 NEGATIVE_INFINITY = -5
 NEGATIVE_ZERO = -6
 
-_NUXT_DATA_RE = re.compile(r'<script[^>]*id="__NUXT_DATA__"[^>]*>(.*?)</script>', re.DOTALL)
+_NUXT_DATA_RE = re.compile(
+    r'<script[^>]*id="__NUXT_DATA__"[^>]*>(.*?)</script>', re.DOTALL
+)
 
 #: Types devalue encodes as ``[type_name, payload]``; we unwrap them to the payload.
 _TRANSPARENT_TYPES = frozenset(
@@ -101,7 +103,9 @@ def parse(flat: list[Any]) -> Any:
     return hydrate(0)
 
 
-def _hydrate_tagged(index: int, value: list[Any], hydrate, hydrated: dict[int, Any]) -> Any:
+def _hydrate_tagged(
+    index: int, value: list[Any], hydrate, hydrated: dict[int, Any]
+) -> Any:
     """Handle ``[type_name, ...]`` nodes."""
     type_name = value[0]
 

@@ -150,7 +150,9 @@ def whisper_is_affordable() -> tuple[bool, str]:
     except ImportError:
         return False, "faster-whisper is not installed"
     try:
-        fields = dict(line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines())
+        fields = dict(
+            line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines()
+        )
         free_mb = int(fields["MemAvailable"].split()[0]) // 1024
     except Exception:
         return False, "cannot read available memory"
@@ -266,16 +268,9 @@ def build_letsplay(game_title: str, game_id: int | None, budget: float | None = 
     """
     deadline = time.monotonic() + (budget or settings.youtube_timeout)
     record: dict = {
-        "video_id": None,
-        "url": None,
-        "title": None,
-        "channel": None,
-        "view_count": None,
-        "transcript_source": "none",
-        "transcript_chars": 0,
-        "verdict": {},
-        "model": None,
-        "error": None,
+        "video_id": None, "url": None, "title": None, "channel": None,
+        "view_count": None, "transcript_source": "none", "transcript_chars": 0,
+        "verdict": {}, "model": None, "error": None,
     }
     try:
         video = search_letsplay(game_title)
@@ -287,11 +282,8 @@ def build_letsplay(game_title: str, game_id: int | None, budget: float | None = 
         return record
 
     record |= {
-        "video_id": video.video_id,
-        "url": video.url,
-        "title": video.title,
-        "channel": video.channel,
-        "view_count": video.view_count,
+        "video_id": video.video_id, "url": video.url, "title": video.title,
+        "channel": video.channel, "view_count": video.view_count,
     }
 
     text, source, error = get_transcript(video.video_id, deadline - time.monotonic())

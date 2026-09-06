@@ -36,6 +36,10 @@ whisper = [
 [tool.setuptools.packages.find]
 include = ["app*"]
 
+[tool.setuptools.package-data]
+# Templates and the stylesheet are part of the app, not build leftovers.
+app = ["templates/*.html", "static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

@@ -105,7 +105,7 @@ def test_a_stale_copy_is_refetched(cover_dir):
 
     client = fake_client(handler)
     covers.cache_cover("g", "https://img.test/x.jpg", client)
-    stale = (time.time() - (covers.MAX_AGE + timedelta(days=1)).total_seconds())
+    stale = time.time() - (covers.MAX_AGE + timedelta(days=1)).total_seconds()
     import os
 
     os.utime(cover_dir / "g.jpg", (stale, stale))
@@ -210,10 +210,23 @@ def client(monkeypatch, tmp_path, cover_dir):
     monkeypatch.setattr(main, "init_db", lambda: None)
     monkeypatch.setattr(main, "create_scheduler", lambda: _NullScheduler())
     with factory() as session:
-        session.add(Game(slug="cached", title="Cached Game", cover_path="cached.jpg",
-                         cover_url="https://img.test/remote.jpg", genres=[]))
-        session.add(Game(slug="remote", title="Remote Game",
-                         cover_url="https://img.test/remote.jpg", genres=[]))
+        session.add(
+            Game(
+                slug="cached",
+                title="Cached Game",
+                cover_path="cached.jpg",
+                cover_url="https://img.test/remote.jpg",
+                genres=[],
+            )
+        )
+        session.add(
+            Game(
+                slug="remote",
+                title="Remote Game",
+                cover_url="https://img.test/remote.jpg",
+                genres=[],
+            )
+        )
         session.add(Game(slug="bare", title="Bare Game", genres=[]))
         session.commit()
     covers.cache_cover("cached", "https://img.test/x.jpg", fake_client(image_response()))
@@ -222,8 +235,11 @@ def client(monkeypatch, tmp_path, cover_dir):
 
 
 class _NullScheduler:
-    def start(self): pass
-    def shutdown(self, wait=True): pass
+    def start(self):
+        pass
+
+    def shutdown(self, wait=True):
+        pass
 
 
 def test_templates_prefer_the_local_copy(client):
