@@ -21,7 +21,7 @@ from app import covers, monitor, similar
 from app.config import BASE_DIR, settings
 from app.crawler import is_running, run_crawl
 from app.db import SessionLocal, init_db
-from app.models import CrawlRun, Game, Platform, Review
+from app.models import CrawlRun, Game, Platform, Review, utcnow
 from app.scheduler import create_scheduler
 
 log = logging.getLogger(__name__)
@@ -52,9 +52,29 @@ def youtube_embed(url: str | None) -> str | None:
     return f"https://www.youtube.com/embed/{match.group(1)}" if match else None
 
 
+def close_orphaned_runs() -> int:
+    """Mark crawls that died with a previous process, so the dashboard stays honest.
+
+    Safe at startup: nothing of ours can be running yet. A crawl started by
+    `python -m app.crawler` in a separate process would be mislabelled, but that
+    already conflicts with the single-process lock.
+    """
+    with SessionLocal() as session:
+        orphans = session.scalars(select(CrawlRun).where(CrawlRun.status == "running")).all()
+        for run in orphans:
+            run.status = "interrupted"
+            run.finished_at = run.finished_at or utcnow()
+            run.error = (run.error or "") + " прерван: процесс завершился во время обхода"
+        session.commit()
+        return len(orphans)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    orphans = close_orphaned_runs()
+    if orphans:
+        log.warning("closed %d crawl run(s) left running by a previous process", orphans)
     monitor.reset()
     monitor.emit(type="startup", message="сервис запущен")
     scheduler = create_scheduler()

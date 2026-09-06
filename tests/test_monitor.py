@@ -7,7 +7,7 @@ import threading
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app import db as app_db
@@ -274,3 +274,28 @@ def test_skipped_runs_do_not_count_towards_today(client):
         )
         session.commit()
     assert client.get("/healthz").json()["today"]["runs"] == 1
+
+
+def test_a_run_left_running_by_a_dead_process_is_closed_at_startup(monkeypatch, tmp_path):
+    from sqlalchemy import create_engine as _create_engine
+
+    engine = _create_engine(f"sqlite:///{tmp_path / 'orphan.db'}", future=True)
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(main, "SessionLocal", factory)
+    with factory() as session:
+        session.add(
+            CrawlRun(
+                source="browse:3", reason="scheduled", status="running", planned=20, processed=4
+            )
+        )
+        session.commit()
+
+    assert main.close_orphaned_runs() == 1
+    with factory() as session:
+        run = session.scalar(select(CrawlRun))
+        assert run.status == "interrupted"
+        assert run.finished_at is not None
+        assert "процесс завершился" in run.error
+    # Nothing left to close on the next start.
+    assert main.close_orphaned_runs() == 0

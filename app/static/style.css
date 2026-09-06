@@ -344,6 +344,7 @@ img { display: block; max-width: 100%; }
 .pill--running { background: rgb(139 92 246 / 0.2); color: #c4b5fd; }
 .pill--partial { background: rgb(242 201 76 / 0.18); color: var(--mixed); }
 .pill--failed { background: rgb(239 68 68 / 0.18); color: #fca5a5; }
+.pill--interrupted { background: rgb(242 201 76 / 0.14); color: var(--mixed); }
 
 .log {
   list-style: none; margin: 0; padding: 0.5rem 0.75rem;
