@@ -31,6 +31,9 @@ REVIEWS_SHOWN = 10
 RECENT_RUNS = 10
 SSE_POLL_SECONDS = 0.5
 SSE_HEARTBEAT_SECONDS = 15
+# Streams end on their own and the browser's EventSource reconnects. Bounding them
+# means a client that vanishes without a clean disconnect cannot pin a task forever.
+SSE_MAX_SECONDS = 300
 SORTS = {
     "metascore_desc": (Game.best_metascore, "desc"),
     "metascore_asc": (Game.best_metascore, "asc"),
@@ -241,7 +244,7 @@ def monitor_page(request: Request, session: Session = Depends(get_session)):
 
 
 @app.get("/monitor/stream")
-async def monitor_stream(request: Request):
+async def monitor_stream():
     """Server-sent events: a state snapshot, then every new event as it happens."""
 
     async def gen():
@@ -249,7 +252,8 @@ async def monitor_stream(request: Request):
         yield f"event: state\ndata: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
         seq = snapshot["seq"]
         idle_for = 0.0
-        while not await request.is_disconnected():
+        deadline = asyncio.get_running_loop().time() + SSE_MAX_SECONDS
+        while asyncio.get_running_loop().time() < deadline:
             new = monitor.since(seq)
             if new:
                 seq = new[-1]["seq"]
