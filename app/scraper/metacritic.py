@@ -234,7 +234,16 @@ def _video_url(item: dict[str, Any], json_ld: dict[str, Any]) -> str | None:
 
 
 def _score(summary: Any) -> Any:
-    return summary.get("score") if isinstance(summary, dict) else None
+    """Score out of a score summary, or `None` when Metacritic would render "tbd".
+
+    Below its minimum review count the site reports `score: 0` with a null `sentiment`
+    instead of omitting the score, which would otherwise look like a real zero.
+    """
+    if not isinstance(summary, dict):
+        return None
+    if summary.get("score") is None or not summary.get("sentiment"):
+        return None
+    return summary["score"]
 
 
 def parse_game(html: str, slug: str) -> GameData:

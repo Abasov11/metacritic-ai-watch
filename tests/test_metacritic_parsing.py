@@ -167,3 +167,13 @@ def test_empty_quotes_are_dropped():
     payload = {"data": {"items": [{"quote": "  ", "score": 5}, {"quote": "ok", "score": 7}]}}
     reviews = parse_reviews_api(payload, "user")
     assert [r.text for r in reviews] == ["ok"]
+
+
+def test_tbd_scores_are_not_reported_as_zero():
+    # Below its review threshold Metacritic sends `score: 0` with a null sentiment.
+    from app.scraper.metacritic import _score
+
+    assert _score({"score": 0, "reviewCount": 3, "sentiment": None}) is None
+    assert _score({"score": None, "reviewCount": None, "sentiment": None}) is None
+    assert _score({"score": 8.9, "reviewCount": 7391, "sentiment": "Generally favorable"}) == 8.9
+    assert _score(None) is None
