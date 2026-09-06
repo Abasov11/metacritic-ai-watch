@@ -18,12 +18,19 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "python-multipart>=0.0.9",
+    "yt-dlp>=2024.8.6",
+    "youtube-transcript-api>=1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2",
     "ruff>=0.5",
+]
+# Local speech-to-text for videos without captions. Heavy (~800 MB with the model)
+# and slow on CPU, so it is opt-in: install it and set YOUTUBE_WHISPER_ENABLED=1.
+whisper = [
+    "faster-whisper>=1.0",
 ]
 
 [tool.setuptools.packages.find]

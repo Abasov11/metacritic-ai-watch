@@ -11,16 +11,26 @@ from __future__ import annotations
 import argparse
 import logging
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from app import covers, monitor, similar
+from app import covers, monitor, similar, youtube
 from app.config import settings
 from app.db import SessionLocal, init_db
 from app.llm import summarize_reviews
-from app.models import CrawlItem, CrawlRun, Game, Platform, Review, Summary, text_hash, utcnow
+from app.models import (
+    CrawlItem,
+    CrawlRun,
+    Game,
+    LetsPlay,
+    Platform,
+    Review,
+    Summary,
+    text_hash,
+    utcnow,
+)
 from app.scraper import metacritic
 from app.scraper.http import default_client
 
@@ -159,6 +169,49 @@ def _upsert_summary(session, game: Game, kind: str, **fields) -> None:
     session.flush()
 
 
+def _letsplay_is_current(letsplay: LetsPlay | None) -> bool:
+    """A recent, successful lookup is not worth repeating."""
+    if letsplay is None or letsplay.transcript_source == "none":
+        return False
+    age = utcnow() - letsplay.updated_at.replace(tzinfo=UTC)
+    return age < timedelta(days=settings.youtube_max_age_days)
+
+
+def process_letsplay(session, game: Game) -> str | None:
+    """Find and summarise a let's play. Returns an error string, never raises."""
+    existing = session.scalar(select(LetsPlay).where(LetsPlay.game_id == game.id))
+    if _letsplay_is_current(existing):
+        return None
+
+    monitor.emit(type="letsplay_start", worker="youtube", status="busy",
+                 detail=f"searching {game.slug}", slug=game.slug,
+                 message=f"ищу летсплей для {game.title}")
+    try:
+        record = youtube.build_letsplay(game.title, game.id)
+    except Exception as exc:  # build_letsplay swallows its own, this is belt and braces
+        log.exception("letsplay stage crashed for %s", game.slug)
+        record = {"transcript_source": "none", "error": str(exc)[:500]}
+
+    if existing is None:
+        existing = LetsPlay(game_id=game.id)
+        session.add(existing)
+    for key, value in record.items():
+        setattr(existing, key, value)
+    existing.updated_at = utcnow()
+    session.commit()
+
+    monitor.emit(
+        type="letsplay_error" if record.get("error") else "letsplay_done",
+        worker="youtube", status="idle", slug=game.slug,
+        message=(
+            f"{game.slug}: {record['error']}" if record.get("error")
+            else f"{game.slug}: «{record.get('title')}» "
+                 f"({record.get('view_count')} просмотров, {record.get('transcript_source')})"
+        ),
+    )
+    return record.get("error")
+
+
 def process_game(session, slug: str) -> tuple[str, str | None]:
     """Scrape and summarise one game. Returns (status, error)."""
     client = default_client()
@@ -215,6 +268,11 @@ def process_game(session, slug: str) -> tuple[str, str | None]:
             continue
         _upsert_summary(session, game, kind, review_count=len(stored), **result)
         session.commit()
+
+    if settings.youtube_enabled:
+        letsplay_error = process_letsplay(session, game)
+        if letsplay_error:
+            log.info("no letsplay for %s: %s", slug, letsplay_error)
 
     if llm_error is None:
         game.last_crawled_at = utcnow()

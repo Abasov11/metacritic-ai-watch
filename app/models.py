@@ -60,6 +60,9 @@ class Game(Base):
     summaries: Mapped[list[Summary]] = relationship(
         back_populates="game", cascade="all, delete-orphan", lazy="selectin"
     )
+    letsplay: Mapped[LetsPlay | None] = relationship(
+        back_populates="game", cascade="all, delete-orphan", lazy="selectin", uselist=False
+    )
 
 
 class Platform(Base):
@@ -113,6 +116,30 @@ class Summary(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     game: Mapped[Game] = relationship(back_populates="summaries")
+
+
+class LetsPlay(Base):
+    """The most watched playthrough of a game and what its author thinks of it."""
+
+    __tablename__ = "letsplays"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    game_id: Mapped[int] = mapped_column(
+        ForeignKey("games.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    video_id: Mapped[str | None] = mapped_column(String(20))
+    url: Mapped[str | None] = mapped_column(String(500))
+    title: Mapped[str | None] = mapped_column(String(300))
+    channel: Mapped[str | None] = mapped_column(String(200))
+    view_count: Mapped[int | None] = mapped_column(Integer)
+    transcript_source: Mapped[str] = mapped_column(String(20), default="none")
+    transcript_chars: Mapped[int] = mapped_column(Integer, default=0)
+    verdict: Mapped[dict] = mapped_column(JSON, default=dict)
+    model: Mapped[str | None] = mapped_column(String(100))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    game: Mapped[Game] = relationship(back_populates="letsplay")
 
 
 class CrawlRun(Base):

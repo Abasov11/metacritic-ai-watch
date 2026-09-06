@@ -141,6 +141,20 @@ def game_to_dict(game: Game, full: bool = False) -> dict:
         "video_url": game.video_url,
         "metacritic_url": game.metacritic_url,
         "last_crawled_at": game.last_crawled_at.isoformat() if game.last_crawled_at else None,
+        "letsplay": game.letsplay
+        and {
+            "video_id": game.letsplay.video_id,
+            "url": game.letsplay.url,
+            "title": game.letsplay.title,
+            "channel": game.letsplay.channel,
+            "view_count": game.letsplay.view_count,
+            "transcript_source": game.letsplay.transcript_source,
+            "transcript_chars": game.letsplay.transcript_chars,
+            "verdict": game.letsplay.verdict,
+            "model": game.letsplay.model,
+            "error": game.letsplay.error,
+            "updated_at": game.letsplay.updated_at.isoformat(),
+        },
         "summaries": {
             s.kind: {
                 "likes": s.likes,

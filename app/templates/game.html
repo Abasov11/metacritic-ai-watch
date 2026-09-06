@@ -96,6 +96,54 @@
       </div>
     </section>
 
+    <section class="section">
+      <h2 class="section__title">Летсплей</h2>
+      {% set lp = game.letsplay %}
+      {% if lp and lp.video_id %}
+        <div class="letsplay">
+          <a class="letsplay__thumb" href="{{ lp.url }}" rel="noopener" target="_blank"
+             aria-label="Открыть на YouTube: {{ lp.title }}">
+            <img src="https://i.ytimg.com/vi/{{ lp.video_id }}/mqdefault.jpg"
+                 alt="Превью ролика: {{ lp.title }}" loading="lazy" width="320" height="180">
+            <span class="letsplay__play" aria-hidden="true"></span>
+          </a>
+          <div class="letsplay__body">
+            <h3 class="letsplay__title">
+              <a href="{{ lp.url }}" rel="noopener" target="_blank">{{ lp.title }}</a>
+            </h3>
+            <p class="letsplay__meta">
+              {{ lp.channel or "канал неизвестен" }}
+              {% if lp.view_count %}<span class="dot">·</span>{{ "{:,}".format(lp.view_count).replace(",", " ") }} просмотров{% endif %}
+              <span class="dot">·</span>
+              {% if lp.transcript_source == "subtitles" %}текст из субтитров
+              {% elif lp.transcript_source == "whisper" %}текст распознан Whisper
+              {% else %}расшифровки нет{% endif %}
+              {% if lp.transcript_chars %}<span class="dot">·</span>{{ lp.transcript_chars }} символов{% endif %}
+            </p>
+
+            {% if lp.verdict and lp.verdict.get("verdict") %}
+              <p class="letsplay__verdict">{{ lp.verdict.get("verdict") }}</p>
+              {% if lp.verdict.get("highlights") %}
+                <ul class="summary__list">
+                  {% for x in lp.verdict.get("highlights") %}<li>{{ x }}</li>{% endfor %}
+                </ul>
+              {% endif %}
+              <p class="summary__meta">
+                {% if lp.model %}{{ lp.model }}<span class="dot">·</span>{% endif %}
+                {{ lp.updated_at.strftime("%d.%m.%Y %H:%M UTC") }}
+              </p>
+            {% else %}
+              <p class="empty">Заключение не составлено: {{ lp.error or "нет расшифровки речи" }}</p>
+            {% endif %}
+          </div>
+        </div>
+      {% elif lp %}
+        <p class="empty">Летсплей не подобран: {{ lp.error or "причина не записана" }}</p>
+      {% else %}
+        <p class="empty">Ещё не обработано.</p>
+      {% endif %}
+    </section>
+
     {% if similar %}
       <section class="section">
         <h2 class="section__title">Похожие игры</h2>

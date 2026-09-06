@@ -36,6 +36,20 @@ class Settings(BaseSettings):
     crawl_batch_size: int = 20
     reviews_per_kind: int = 40
 
+    # --- youtube let's plays ---
+    youtube_enabled: bool = True
+    youtube_search_count: int = 15
+    youtube_min_duration: int = 180  # seconds; drops shorts and clips
+    youtube_timeout: float = 120.0  # per-game budget for the whole stage
+    youtube_max_age_days: int = 7
+    #: Netscape cookie jar. YouTube blocks video extraction from datacenter IPs
+    #: without one, so subtitles and audio are unavailable until this is set.
+    youtube_cookies_file: str = ""
+    youtube_whisper_enabled: bool = False
+    youtube_whisper_model: str = "small"
+    youtube_whisper_min_free_mb: int = 2048
+    youtube_audio_seconds: int = 900  # transcribe at most the first 15 minutes
+
     # --- LLM (OpenRouter) ---
     openrouter_api_key: str = ""
     openrouter_url: str = "https://openrouter.ai/api/v1/chat/completions"
