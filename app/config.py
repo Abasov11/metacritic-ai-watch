@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     youtube_search_count: int = 15
     youtube_min_duration: int = 180  # seconds; drops shorts and clips
     youtube_timeout: float = 120.0  # per-game budget for the whole stage
+    youtube_delay: float = 5.0  # pause between videos, YouTube rate-limits hard
+    #: Waits after a 429, in seconds. Trimmed to whatever budget is left.
+    youtube_backoff: tuple[float, ...] = (15.0, 45.0, 120.0)
     youtube_max_age_days: int = 7
     #: Netscape cookie jar. YouTube blocks video extraction from datacenter IPs
     #: without one, so subtitles and audio are unavailable until this is set.

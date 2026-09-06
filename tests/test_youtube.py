@@ -108,6 +108,9 @@ SEARCH_RESULTS = [
 def no_cookies(monkeypatch):
     monkeypatch.setattr(youtube.settings, "youtube_cookies_file", "")
     monkeypatch.setattr(youtube.settings, "youtube_whisper_enabled", False)
+    # Real pacing would add five seconds per video to the suite.
+    monkeypatch.setattr(youtube.settings, "youtube_delay", 0.0)
+    monkeypatch.setattr(youtube, "_last_video_at", 0.0)
 
 
 @pytest.fixture
@@ -181,19 +184,21 @@ def test_search_failures_are_wrapped(monkeypatch):
 
 
 def test_subtitles_are_preferred(monkeypatch):
-    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid: "он говорит вот это")
+    monkeypatch.setattr(
+        youtube, "fetch_subtitles", lambda vid, seconds_left=None: "он говорит вот это"
+    )
     assert youtube.get_transcript("v", 60) == ("он говорит вот это", "subtitles", None)
 
 
 def test_without_subtitles_and_without_whisper_the_source_is_none(monkeypatch):
-    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid: "")
+    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid, seconds_left=None: "")
     text, source, error = youtube.get_transcript("v", 60)
     assert (text, source) == ("", "none")
     assert "whisper skipped" in error
 
 
 def test_a_blocked_subtitle_request_is_reported_not_raised(monkeypatch):
-    def blocked(vid):
+    def blocked(vid, seconds_left=None):
         raise RuntimeError("RequestBlocked: YouTube is blocking requests from your IP")
 
     monkeypatch.setattr(youtube, "fetch_subtitles", blocked)
@@ -203,14 +208,14 @@ def test_a_blocked_subtitle_request_is_reported_not_raised(monkeypatch):
 
 
 def test_whisper_runs_only_when_it_is_affordable(monkeypatch):
-    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid: "")
+    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid, seconds_left=None: "")
     monkeypatch.setattr(youtube, "whisper_is_affordable", lambda: (True, "plenty"))
     monkeypatch.setattr(youtube, "transcribe_audio", lambda vid, left: "распознанный текст")
     assert youtube.get_transcript("v", 300) == ("распознанный текст", "whisper", None)
 
 
 def test_a_whisper_crash_degrades_to_none(monkeypatch):
-    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid: "")
+    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid, seconds_left=None: "")
     monkeypatch.setattr(youtube, "whisper_is_affordable", lambda: (True, "plenty"))
 
     def boom(vid, left):
@@ -264,7 +269,9 @@ def llm(monkeypatch):
 
 
 def test_build_letsplay_happy_path(search, llm, monkeypatch):
-    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid: "речь блогера " * 50)
+    monkeypatch.setattr(
+        youtube, "fetch_subtitles", lambda vid, seconds_left=None: "речь блогера " * 50
+    )
     record = youtube.build_letsplay("Hollow Knight: Silksong", 7)
 
     assert record["video_id"] == "good2"
@@ -277,7 +284,7 @@ def test_build_letsplay_happy_path(search, llm, monkeypatch):
 
 
 def test_build_letsplay_records_why_it_failed(search, monkeypatch):
-    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid: "")
+    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid, seconds_left=None: "")
     record = youtube.build_letsplay("Hollow Knight: Silksong", 7)
 
     # The video was still found and stored; only the transcript is missing.
@@ -289,13 +296,13 @@ def test_build_letsplay_records_why_it_failed(search, monkeypatch):
 
 
 def test_build_letsplay_never_calls_the_llm_without_text(search, llm, monkeypatch):
-    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid: "")
+    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid, seconds_left=None: "")
     youtube.build_letsplay("Hollow Knight: Silksong", 7)
     assert llm == []
 
 
 def test_build_letsplay_survives_an_llm_failure(search, monkeypatch):
-    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid: "речь")
+    monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid, seconds_left=None: "речь")
 
     def boom(*a, **k):
         raise RuntimeError("llm down")
@@ -721,10 +728,217 @@ def test_search_does_not_ask_for_the_heavy_extraction_options(monkeypatch, tmp_p
 
 
 def test_a_refused_transcript_is_recorded_not_raised(monkeypatch):
-    def refused(video_id):
+    def refused(video_id, seconds_left=None):
         raise RuntimeError("Sign in to confirm you're not a bot")
 
     monkeypatch.setattr(youtube, "fetch_subtitles", refused)
     text, source, error = youtube.get_transcript("v", 60)
     assert (text, source) == ("", "none")
     assert "not a bot" in error
+
+
+# ------------------------------------------------------------ picking one track
+
+
+@pytest.mark.parametrize(
+    "info,expected",
+    [
+        # Manual English wins outright.
+        ({"subtitles": {"en": [1], "ru": [1]}, "automatic_captions": {"en": [1]}}, ("en", False)),
+        # No manual English: auto English beats manual Russian, which would be a
+        # machine translation of the same speech.
+        ({"subtitles": {"ru": [1]}, "automatic_captions": {"en": [1]}}, ("en", True)),
+        # Regional codes count as their language.
+        ({"subtitles": {}, "automatic_captions": {"en-US": [1]}}, ("en-US", True)),
+        # Russian is next in line.
+        ({"subtitles": {"ru": [1]}, "automatic_captions": {"de": [1]}}, ("ru", False)),
+        # Neither preferred language: take anything, the model can read it.
+        ({"subtitles": {}, "automatic_captions": {"de": [1], "fr": [1]}}, ("de", True)),
+        # Empty track lists do not count as tracks.
+        ({"subtitles": {"en": []}, "automatic_captions": {"ru": [1]}}, ("ru", True)),
+    ],
+)
+def test_one_track_is_chosen_by_priority(info, expected):
+    assert youtube.pick_track(info) == expected
+
+
+def test_no_captions_at_all_picks_nothing():
+    assert youtube.pick_track({"subtitles": {}, "automatic_captions": {}}) is None
+    assert youtube.pick_track({}) is None
+
+
+def test_only_the_chosen_language_is_downloaded(monkeypatch):
+    asked = []
+
+    monkeypatch.setattr(
+        youtube,
+        "probe_video",
+        lambda vid: {"subtitles": {}, "automatic_captions": {"en": [1], "ru": [1], "de": [1]}},
+    )
+
+    def download(video_id, language, is_auto):
+        asked.append((language, is_auto))
+        return "речь блогера"
+
+    monkeypatch.setattr(youtube, "_download_track", download)
+    assert youtube.fetch_subtitles("v", 60) == "речь блогера"
+    # One request, not one per language — the extra ones are what earn a 429.
+    assert asked == [("en", True)]
+
+
+def test_a_failing_track_falls_through_to_the_next(monkeypatch):
+    asked = []
+    monkeypatch.setattr(
+        youtube,
+        "probe_video",
+        lambda vid: {"subtitles": {"en": [1]}, "automatic_captions": {"ru": [1]}},
+    )
+
+    def download(video_id, language, is_auto):
+        asked.append(language)
+        if language == "en":
+            raise RuntimeError("HTTP Error 404: Not Found")
+        return "запасная дорожка"
+
+    monkeypatch.setattr(youtube, "_download_track", download)
+    assert youtube.fetch_subtitles("v", 60) == "запасная дорожка"
+    assert asked == ["en", "ru"]
+
+
+def test_an_empty_track_falls_through_too(monkeypatch):
+    monkeypatch.setattr(
+        youtube,
+        "probe_video",
+        lambda vid: {"subtitles": {"en": [1]}, "automatic_captions": {"ru": [1]}},
+    )
+    monkeypatch.setattr(
+        youtube,
+        "_download_track",
+        lambda vid, language, is_auto: "" if language == "en" else "вторая",
+    )
+    assert youtube.fetch_subtitles("v", 60) == "вторая"
+
+
+# ------------------------------------------------------------------- rate limits
+
+
+@pytest.mark.parametrize(
+    "message,limited",
+    [
+        ("HTTP Error 429: Too Many Requests", True),
+        ("ERROR: Unable to download video subtitles for 'ru': HTTP Error 429", True),
+        ("too many requests", True),
+        ("HTTP Error 503: Service Unavailable", True),
+        ("HTTP Error 404: Not Found", False),
+        ("Sign in to confirm you're not a bot", False),
+    ],
+)
+def test_rate_limiting_is_recognised(message, limited):
+    assert youtube.is_rate_limited(RuntimeError(message)) is limited
+
+
+def test_a_429_is_retried_with_growing_pauses(monkeypatch):
+    waits: list[float] = []
+    attempts = []
+    monkeypatch.setattr(youtube.time, "sleep", waits.append)
+    monkeypatch.setattr(youtube.settings, "youtube_backoff", (15.0, 45.0, 120.0))
+
+    def flaky():
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise RuntimeError("HTTP Error 429: Too Many Requests")
+        return "получилось"
+
+    deadline = youtube.time.monotonic() + 10_000
+    assert youtube._with_backoff(flaky, deadline, "test") == "получилось"
+    assert waits == [15.0, 45.0]
+
+
+def test_backoff_gives_up_inside_the_budget(monkeypatch):
+    monkeypatch.setattr(youtube.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(youtube.settings, "youtube_backoff", (15.0, 45.0, 120.0))
+
+    def always_429():
+        raise RuntimeError("HTTP Error 429")
+
+    # Only ~20 seconds left: the first pause fits, the second does not.
+    with pytest.raises(youtube.RateLimited):
+        youtube._with_backoff(always_429, youtube.time.monotonic() + 20, "test")
+
+
+def test_a_non_rate_limit_error_is_not_retried(monkeypatch):
+    attempts = []
+    monkeypatch.setattr(youtube.time, "sleep", lambda seconds: None)
+
+    def broken():
+        attempts.append(1)
+        raise RuntimeError("Sign in to confirm you're not a bot")
+
+    with pytest.raises(RuntimeError, match="not a bot"):
+        youtube._with_backoff(broken, youtube.time.monotonic() + 10_000, "test")
+    assert len(attempts) == 1
+
+
+def test_a_rate_limited_video_is_recorded_for_a_later_retry(monkeypatch):
+    def limited(video_id, seconds_left=None):
+        raise youtube.RateLimited("429 после повторов")
+
+    monkeypatch.setattr(youtube, "fetch_subtitles", limited)
+    text, source, error = youtube.get_transcript("v", 60)
+    assert (text, source) == ("", "none")
+    assert error == "YouTube: слишком много запросов, повтор в следующем обходе"
+    # `none` is never treated as current, so the next crawl tries again.
+    assert "whisper" not in error
+
+
+# ---------------------------------------------------------------- the cookie lock
+
+
+def test_the_cookie_lock_is_taken_and_released(monkeypatch, tmp_path):
+    cookies = tmp_path / "youtube-cookies.txt"
+    cookies.write_text("# Netscape HTTP Cookie File\n")
+    monkeypatch.setattr(youtube.settings, "youtube_cookies_file", str(cookies))
+
+    events = []
+    real_flock = youtube.fcntl.flock
+    monkeypatch.setattr(
+        youtube.fcntl,
+        "flock",
+        lambda handle, operation: (events.append(operation), real_flock(handle, operation))[0],
+    )
+    with youtube.cookie_lock():
+        pass
+
+    assert events == [youtube.fcntl.LOCK_EX, youtube.fcntl.LOCK_UN]
+    assert (tmp_path / "youtube-cookies.txt.lock").exists()
+
+
+def test_the_cookie_lock_is_released_even_after_a_failure(monkeypatch, tmp_path):
+    cookies = tmp_path / "c.txt"
+    cookies.write_text("x")
+    monkeypatch.setattr(youtube.settings, "youtube_cookies_file", str(cookies))
+
+    with pytest.raises(RuntimeError), youtube.cookie_lock():
+        raise RuntimeError("boom")
+    # A second acquisition would block forever if the first had leaked the lock.
+    with youtube.cookie_lock():
+        pass
+
+
+def test_without_a_cookie_file_there_is_nothing_to_lock(monkeypatch, tmp_path):
+    monkeypatch.setattr(youtube.settings, "youtube_cookies_file", "")
+    with youtube.cookie_lock():
+        pass
+    assert list(tmp_path.glob("*.lock")) == []
+
+
+def test_videos_are_spaced_out(monkeypatch):
+    waits = []
+    monkeypatch.setattr(youtube.time, "sleep", waits.append)
+    monkeypatch.setattr(youtube.settings, "youtube_delay", 5.0)
+    monkeypatch.setattr(youtube, "_last_video_at", 0.0)
+
+    youtube._space_out_requests()  # first call never waits
+    assert waits == []
+    youtube._space_out_requests()
+    assert waits and 0 < waits[0] <= 5.0

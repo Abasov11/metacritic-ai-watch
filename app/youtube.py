@@ -20,6 +20,8 @@ missing the stage records `none` with the reason and the crawl carries on.
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import logging
 import re
@@ -34,7 +36,12 @@ from app.llm import chat_json
 log = logging.getLogger(__name__)
 
 MAX_TRANSCRIPT_CHARS = 12_000
+#: Preferred caption tracks, best first. Only one is ever downloaded: asking for `ru` on
+#: an English video makes YouTube machine-translate it, which is a second request for a
+#: worse transcript — and that second request is what earns the 429.
 TRANSCRIPT_LANGUAGES = ("en", "ru")
+
+_RATE_LIMITED = re.compile(r"429|too many requests|HTTP Error 5\d\d", re.IGNORECASE)
 
 #: Titles that are clearly not a playthrough.
 NOT_A_LETSPLAY = re.compile(
@@ -73,6 +80,10 @@ ALL_WORDS_TITLE_WORDS = 3
 
 class YouTubeError(RuntimeError):
     pass
+
+
+class RateLimited(YouTubeError):
+    """YouTube asked us to slow down; worth retrying later, not worth hammering now."""
 
 
 @dataclass
@@ -250,29 +261,150 @@ def parse_json3(payload: str | dict) -> str:
     return " ".join("".join(pieces).split())
 
 
-def fetch_subtitles(video_id: str) -> str:
-    """Caption text, auto-generated included. Empty string when there are none."""
+@contextlib.contextmanager
+def cookie_lock():
+    """Serialise yt-dlp across processes.
+
+    yt-dlp rewrites the cookie file with refreshed cookies after every run, so the
+    service and a `--refresh-letsplays` run sharing one jar corrupt each other's
+    session. Without a configured jar there is nothing to protect.
+    """
+    path = settings.youtube_cookies_file
+    if not path:
+        yield
+        return
+    lock_path = Path(f"{path}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def is_rate_limited(error: BaseException) -> bool:
+    return bool(_RATE_LIMITED.search(str(error)))
+
+
+def pick_track(info: dict) -> tuple[str, bool] | None:
+    """Choose one caption track: (language, is_automatic).
+
+    Manual captions beat auto-generated ones, English beats Russian, and anything at
+    all beats nothing — the summary prompt copes with other languages.
+    """
+    manual = {k: v for k, v in (info.get("subtitles") or {}).items() if v}
+    automatic = {k: v for k, v in (info.get("automatic_captions") or {}).items() if v}
+
+    for language in TRANSCRIPT_LANGUAGES:
+        for source, is_auto in ((manual, False), (automatic, True)):
+            for code in source:
+                if code == language or code.startswith(f"{language}-"):
+                    return code, is_auto
+    for source, is_auto in ((manual, False), (automatic, True)):
+        for code in sorted(source):
+            return code, is_auto
+    return None
+
+
+def _download_track(video_id: str, language: str, is_auto: bool) -> str:
+    """Fetch exactly one caption track and return its text."""
     import yt_dlp
 
     with tempfile.TemporaryDirectory() as workdir:
         options = extraction_options() | {
             "skip_download": True,
-            "writesubtitles": True,
-            "writeautomaticsub": True,
-            "subtitleslangs": list(TRANSCRIPT_LANGUAGES),
+            "writesubtitles": not is_auto,
+            "writeautomaticsub": is_auto,
+            "subtitleslangs": [language],
             "subtitlesformat": "json3",
             "outtmpl": str(Path(workdir) / "%(id)s.%(ext)s"),
         }
-        with yt_dlp.YoutubeDL(options) as ydl:
+        with cookie_lock(), yt_dlp.YoutubeDL(options) as ydl:
             ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
-
-        # The subtitle files leave with the temporary directory either way.
-        for language in TRANSCRIPT_LANGUAGES:
-            for path in sorted(Path(workdir).glob(f"*.{language}*.json3")):
-                text = parse_json3(path.read_text(encoding="utf-8"))
-                if text:
-                    return text
+        # Files leave with the temporary directory either way.
+        for path in sorted(Path(workdir).glob("*.json3")):
+            text = parse_json3(path.read_text(encoding="utf-8"))
+            if text:
+                return text
     return ""
+
+
+def probe_video(video_id: str) -> dict:
+    """Metadata only, so we can see which caption tracks exist before asking for one."""
+    import yt_dlp
+
+    options = extraction_options() | {"skip_download": True}
+    with cookie_lock(), yt_dlp.YoutubeDL(options) as ydl:
+        return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False) or {}
+
+
+def fetch_subtitles(video_id: str, seconds_left: float | None = None) -> str:
+    """Caption text from a single best track. Empty string when the video has none.
+
+    Raises :class:`RateLimited` when YouTube keeps refusing after the backoff.
+    """
+    deadline = time.monotonic() + (
+        settings.youtube_timeout if seconds_left is None else seconds_left
+    )
+    info = _with_backoff(lambda: probe_video(video_id), deadline, f"probe {video_id}")
+
+    tracks: list[tuple[str, bool]] = []
+    chosen = pick_track(info)
+    if chosen:
+        tracks.append(chosen)
+        # A second candidate in case the first track 404s or is empty.
+        remaining = pick_track(
+            {
+                "subtitles": {
+                    k: v for k, v in (info.get("subtitles") or {}).items() if k != chosen[0]
+                },
+                "automatic_captions": {
+                    k: v
+                    for k, v in (info.get("automatic_captions") or {}).items()
+                    if k != chosen[0]
+                },
+            }
+        )
+        if remaining:
+            tracks.append(remaining)
+
+    for language, is_auto in tracks:
+        try:
+            text = _with_backoff(
+                lambda language=language, is_auto=is_auto: _download_track(
+                    video_id, language, is_auto
+                ),
+                deadline,
+                f"captions {video_id} {language}",
+            )
+        except RateLimited:
+            raise
+        except Exception as exc:
+            log.info("track %s failed for %s: %s", language, video_id, exc)
+            continue
+        if text:
+            return text
+    return ""
+
+
+def _with_backoff(call, deadline: float, what: str):
+    """Retry `call` through YouTube's rate limiting until the budget runs out."""
+    last: BaseException | None = None
+    for wait in (0.0, *settings.youtube_backoff):
+        if wait:
+            left = deadline - time.monotonic()
+            if left <= wait:
+                break
+            log.info("%s: rate limited, waiting %.0fs", what, wait)
+            time.sleep(wait)
+        try:
+            return call()
+        except Exception as exc:
+            last = exc
+            if not is_rate_limited(exc):
+                raise
+    raise RateLimited(f"{what}: YouTube отвечает 429 после повторов ({last})")
 
 
 def whisper_is_affordable() -> tuple[bool, str]:
@@ -333,10 +465,14 @@ def transcribe_audio(video_id: str, seconds_left: float) -> str:
 def get_transcript(video_id: str, seconds_left: float) -> tuple[str, str, str | None]:
     """Returns (text, source, error). `source` is subtitles | whisper | none."""
     try:
-        text = fetch_subtitles(video_id)
+        text = fetch_subtitles(video_id, seconds_left)
         if text:
             return text, "subtitles", None
         subtitle_error = "no captions for this video"
+    except RateLimited:
+        # Nothing is wrong with the video; the record stays stale so the next crawl
+        # picks it up again.
+        return "", "none", "YouTube: слишком много запросов, повтор в следующем обходе"
     except Exception as exc:
         subtitle_error = f"{type(exc).__name__}: {str(exc).splitlines()[0][:200]}"
         log.info("no subtitles for %s (%s)", video_id, subtitle_error)
@@ -393,12 +529,25 @@ def summarize_letsplay(game_title: str, video: Video, text: str, game_id: int | 
 # ------------------------------------------------------------------------ the stage
 
 
+_last_video_at = 0.0
+
+
+def _space_out_requests() -> None:
+    """Keep a gap between videos: YouTube rate-limits a burst hard."""
+    global _last_video_at
+    gap = time.monotonic() - _last_video_at
+    if _last_video_at and gap < settings.youtube_delay:
+        time.sleep(settings.youtube_delay - gap)
+    _last_video_at = time.monotonic()
+
+
 def build_letsplay(game_title: str, game_id: int | None, budget: float | None = None) -> dict:
     """Everything for one game, as a dict of `LetsPlay` column values.
 
     Never raises: a missing let's play is a missing feature, not a failed crawl.
     """
     deadline = time.monotonic() + (budget or settings.youtube_timeout)
+    _space_out_requests()
     record: dict = {
         "video_id": None,
         "url": None,
