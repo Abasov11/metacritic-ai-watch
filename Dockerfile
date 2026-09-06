@@ -15,7 +15,8 @@ COPY pyproject.toml README.md ./
 COPY app ./app
 
 # Installs the package (templates and static files travel with it) plus its deps.
-RUN pip install --no-cache-dir . \
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir . \
     # && pip install --no-cache-dir ".[whisper]" \
     && rm -rf /app/app /app/pyproject.toml \
     && useradd --create-home --uid 1000 app \

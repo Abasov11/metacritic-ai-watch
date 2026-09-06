@@ -1,7 +1,7 @@
 VENV := .venv
 PY   := $(VENV)/bin/python
 
-.PHONY: help venv dev test lint format crawl-once refresh-covers docker-up docker-down
+.PHONY: help venv dev test lint format audit crawl-once refresh-covers docker-up docker-down
 
 help:
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | sed 's/:.*## /\t/' | expand -t22
@@ -21,6 +21,9 @@ test: $(VENV)  ## run the test suite (never touches the network)
 lint: $(VENV)  ## ruff check + format check
 	$(VENV)/bin/ruff check app tests
 	$(VENV)/bin/ruff format --check app tests
+
+audit: $(VENV)  ## check dependencies for known vulnerabilities
+	$(VENV)/bin/pip-audit
 
 format: $(VENV)  ## apply ruff formatting
 	$(VENV)/bin/ruff format app tests

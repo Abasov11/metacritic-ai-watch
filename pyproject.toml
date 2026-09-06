@@ -26,6 +26,7 @@ dependencies = [
 dev = [
     "pytest>=8.2",
     "ruff>=0.5",
+    "pip-audit>=2.7",
 ]
 # Local speech-to-text for videos without captions. Heavy (~800 MB with the model)
 # and slow on CPU, so it is opt-in: install it and set YOUTUBE_WHISPER_ENABLED=1.
