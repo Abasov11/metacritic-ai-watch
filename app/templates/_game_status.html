@@ -1,0 +1,17 @@
+{# Polled by the card while a refresh runs; stops polling once `busy` is false. #}
+<div id="game-status" class="refresh"
+     {% if busy %}hx-get="/game/{{ game.slug }}/status" hx-trigger="every 3s"
+     hx-target="#game-status" hx-swap="outerHTML"{% endif %}>
+  <button id="refresh-btn" class="btn btn--ghost" type="button"
+          data-slug="{{ game.slug }}" {% if busy %}disabled{% endif %}>
+    Обновить
+  </button>
+  {% if busy %}
+    <span class="refresh__state refresh__state--busy">обновляется…</span>
+  {% else %}
+    <span class="refresh__state" data-updated>
+      обновлено {{ game.updated_at.strftime("%d.%m.%Y %H:%M UTC") }}
+    </span>
+  {% endif %}
+  <span id="refresh-msg" class="refresh__msg" role="status"></span>
+</div>

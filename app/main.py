@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app import covers, monitor, similar
 from app.config import BASE_DIR, settings
-from app.crawler import is_running, run_crawl
+from app.crawler import is_running, process_game, run_crawl
 from app.db import SessionLocal, init_db
 from app.models import CrawlRun, Game, Platform, Review, utcnow
 from app.scheduler import create_scheduler
@@ -35,6 +35,8 @@ MAX_PLATFORM_FILTERS = 40
 MAX_PAGE = 10_000
 #: Manual crawls cost money, so the button cannot be held down.
 MANUAL_RUN_MIN_INTERVAL = 60.0
+#: Same idea per game, for the refresh button on a card.
+REFRESH_MIN_INTERVAL = 60.0
 
 #: The app serves its own JS and CSS, embeds YouTube, and loads video thumbnails from
 #: i.ytimg.com. Nothing else is allowed, and nothing may frame us.
@@ -159,6 +161,10 @@ async def add_security_headers(request: Request, call_next):
 #: When the last manual crawl was accepted, on the monotonic clock. `None` means never
 #: — 0.0 would not do, because monotonic() starts near zero at boot.
 _last_manual_run: float | None = None
+#: Same, per game slug, for the card refresh button.
+_last_refresh: dict[str, float] = {}
+#: Slugs a background refresh is working on right now.
+_refreshing: set[str] = set()
 
 
 def get_session():
@@ -300,6 +306,80 @@ def cover(name: str):
     return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
 
+def _refresh_game(slug: str) -> None:
+    """Re-crawl one game in the background; never lets an error escape the thread."""
+    try:
+        with SessionLocal() as session:
+            status, error = process_game(session, slug)
+        monitor.emit(
+            type="refresh_done" if status != "failed" else "refresh_failed",
+            worker="crawler",
+            status="idle",
+            slug=slug,
+            message=f"{slug}: обновление завершено ({status})" + (f" — {error}" if error else ""),
+        )
+        similar.invalidate()
+    except Exception as exc:  # pragma: no cover - defensive, the thread must not die loudly
+        log.exception("refresh of %s failed", slug)
+        monitor.emit(
+            type="refresh_failed",
+            worker="crawler",
+            status="idle",
+            slug=slug,
+            message=f"{slug}: обновление упало — {exc}",
+        )
+    finally:
+        _refreshing.discard(slug)
+
+
+@app.post("/game/{slug}/refresh")
+def refresh_game(slug: str, request: Request, session: Session = Depends(get_session)):
+    """Re-fetch one game now. Same guards as the manual crawl, but per game."""
+    if not is_same_origin(request):
+        return JSONResponse({"detail": "запрос с чужого источника"}, status_code=403)
+    if session.scalar(select(Game.id).where(Game.slug == slug)) is None:
+        raise HTTPException(status_code=404, detail="game not found")
+    if slug in _refreshing:
+        return JSONResponse({"detail": "уже обновляется"}, status_code=409)
+
+    last = _last_refresh.get(slug)
+    if last is not None:
+        waited = time.monotonic() - last
+        if waited < REFRESH_MIN_INTERVAL:
+            retry_after = int(REFRESH_MIN_INTERVAL - waited) + 1
+            return JSONResponse(
+                {"detail": f"слишком часто, попробуйте через {retry_after} с"},
+                status_code=429,
+                headers={"Retry-After": str(retry_after)},
+            )
+
+    _last_refresh[slug] = time.monotonic()
+    _refreshing.add(slug)
+    monitor.emit(
+        type="refresh_requested",
+        worker="crawler",
+        status="busy",
+        slug=slug,
+        detail=f"refreshing {slug}",
+        message=f"{slug}: обновление запрошено из карточки",
+    )
+    threading.Thread(target=_refresh_game, args=(slug,), daemon=True).start()
+    return JSONResponse({"detail": "обновление запущено"}, status_code=202)
+
+
+@app.get("/game/{slug}/status", response_class=HTMLResponse)
+def game_status(request: Request, slug: str, session: Session = Depends(get_session)):
+    """The little status strip the card polls while a refresh is running."""
+    game = session.scalar(select(Game).where(Game.slug == slug))
+    if game is None:
+        raise HTTPException(status_code=404, detail="game not found")
+    return templates.TemplateResponse(
+        request,
+        "_game_status.html",
+        {"game": game, "busy": slug in _refreshing},
+    )
+
+
 @app.get("/game/{slug}", response_class=HTMLResponse)
 def game_page(request: Request, slug: str, session: Session = Depends(get_session)):
     game = session.scalar(select(Game).where(Game.slug == slug))
@@ -327,6 +407,7 @@ def game_page(request: Request, slug: str, session: Session = Depends(get_sessio
         "game.html",
         {
             "game": game,
+            "busy": slug in _refreshing,
             "summaries": {s.kind: s for s in game.summaries},
             "reviews": reviews,
             "similar": [

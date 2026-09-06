@@ -217,3 +217,100 @@ def test_sql_injection_attempts_are_just_text(client):
         assert client.get("/api/games", params={"q": probe}).json()["total"] == 0
     # The table is still there.
     assert client.get("/api/games").json()["total"] == 1
+
+
+# --------------------------------------------------- POST /game/{slug}/refresh
+
+
+@pytest.fixture(autouse=True)
+def clean_refresh_state(monkeypatch):
+    monkeypatch.setattr(main, "_last_refresh", {})
+    monkeypatch.setattr(main, "_refreshing", set())
+
+
+@pytest.fixture
+def refresh(monkeypatch):
+    done = []
+    monkeypatch.setattr(
+        main, "process_game", lambda session, slug: done.append(slug) or ("ok", None)
+    )
+    return done
+
+
+def test_refresh_starts_a_background_crawl_for_one_game(client, refresh):
+    response = client.post("/game/a-game/refresh", headers={"Sec-Fetch-Site": "same-origin"})
+    assert response.status_code == 202
+    assert response.json()["detail"] == "обновление запущено"
+
+    for _ in range(300):
+        if refresh:
+            break
+        __import__("time").sleep(0.01)
+    assert refresh == ["a-game"]
+
+
+def test_refresh_rejects_a_cross_site_post(client, refresh):
+    response = client.post("/game/a-game/refresh", headers={"Sec-Fetch-Site": "cross-site"})
+    assert response.status_code == 403
+    assert refresh == []
+
+
+def test_refresh_is_rate_limited_per_game(client, refresh):
+    assert client.post("/game/a-game/refresh").status_code == 202
+    for _ in range(300):
+        if refresh:
+            break
+        __import__("time").sleep(0.01)
+
+    second = client.post("/game/a-game/refresh")
+    assert second.status_code == 429
+    assert int(second.headers["Retry-After"]) > 0
+
+
+def test_refresh_of_an_unknown_game_is_404(client, refresh):
+    assert client.post("/game/nope/refresh").status_code == 404
+    assert refresh == []
+
+
+def test_refresh_reports_a_run_already_in_flight(client, monkeypatch):
+    monkeypatch.setattr(main, "_refreshing", {"a-game"})
+    assert client.post("/game/a-game/refresh").status_code == 409
+
+
+def test_refresh_emits_a_monitor_event(client, refresh):
+    from app import monitor
+
+    monitor.reset()
+    client.post("/game/a-game/refresh")
+    for _ in range(300):
+        if refresh:
+            break
+        __import__("time").sleep(0.01)
+
+    kinds = [e["type"] for e in monitor.events()]
+    assert "refresh_requested" in kinds
+    assert any(e.get("slug") == "a-game" for e in monitor.events())
+
+
+def test_the_status_strip_polls_only_while_busy(client, monkeypatch):
+    idle = client.get("/game/a-game/status").text
+    assert "hx-trigger" not in idle
+    assert "обновляется" not in idle
+    assert 'id="refresh-btn"' in idle
+
+    monkeypatch.setattr(main, "_refreshing", {"a-game"})
+    busy = client.get("/game/a-game/status").text
+    assert 'hx-trigger="every 3s"' in busy
+    assert "обновляется…" in busy
+    assert "disabled" in busy
+
+
+def test_the_status_strip_404s_for_an_unknown_game(client):
+    assert client.get("/game/nope/status").status_code == 404
+
+
+def test_the_card_shows_the_refresh_button(client):
+    body = client.get("/game/a-game").text
+    assert 'id="refresh-btn"' in body
+    assert 'data-slug="a-game"' in body
+    assert "/static/game.js" in body

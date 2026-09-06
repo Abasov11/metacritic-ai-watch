@@ -3,6 +3,7 @@
 {% block title %}{{ game.title }} — Metacritic AI Watch{% endblock %}
 
 {% block content %}
+  <script src="/static/game.js" defer></script>
   <article class="game">
     <div class="game__head">
       <div class="cover cover--lg">{{ m.cover(game, "260px") }}</div>
@@ -15,6 +16,8 @@
           {% if game.release_date %}<dt>Дата выхода</dt><dd>{{ game.release_date }}</dd>{% endif %}
           {% if game.genres %}<dt>Жанры</dt><dd>{{ game.genres | join(", ") }}</dd>{% endif %}
         </dl>
+        {% include "_game_status.html" %}
+
         <p class="game__links">
           {% if safe_url(game.metacritic_url) %}
             <a class="btn btn--ghost" href="{{ safe_url(game.metacritic_url) }}"

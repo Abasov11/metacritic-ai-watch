@@ -423,3 +423,12 @@ img { display: block; max-width: 100%; }
   background: var(--accent-soft); border: 1px solid var(--line);
   color: #c4b5fd; font-size: 0.7rem; white-space: nowrap;
 }
+
+/* -------------------------------------------------------------- refresh strip */
+
+.refresh { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: 1rem 0 0; }
+.refresh__state { color: var(--muted); font-size: 0.82rem; }
+.refresh__state--busy { color: var(--mixed); }
+.refresh__msg { font-size: 0.82rem; }
+.refresh__msg--ok { color: var(--good); }
+.refresh__msg--warn { color: var(--mixed); }
