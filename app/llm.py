@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 
+from app import monitor
 from app.config import settings
 from app.db import SessionLocal
 from app.models import LlmCall
@@ -91,6 +92,9 @@ def chat_json(
     for model in models:
         for attempt in range(1, ATTEMPTS_PER_MODEL + 1):
             started = time.monotonic()
+            monitor.emit(type="llm_start", worker="llm", status="busy",
+                         detail=f"{purpose} · {model}", game_id=game_id,
+                         message=f"запрос к {model} ({purpose}, попытка {attempt})")
             try:
                 response = httpx.post(
                     settings.openrouter_url,
@@ -116,6 +120,8 @@ def chat_json(
                     ok=False,
                     error=str(exc)[:1000],
                 )
+                monitor.emit(type="llm_error", worker="llm", status="idle", game_id=game_id,
+                             model=model, message=f"{model} ({purpose}) ошибка: {exc}")
                 continue
 
             usage = payload.get("usage") or {}
@@ -129,6 +135,18 @@ def chat_json(
                 cost=usage.get("cost"),
                 ms=int((time.monotonic() - started) * 1000),
                 ok=True,
+            )
+            monitor.emit(
+                type="llm_call", worker="llm", status="idle", game_id=game_id,
+                model=payload.get("model") or model,
+                ms=int((time.monotonic() - started) * 1000),
+                cost=usage.get("cost"),
+                message=(
+                    f"{payload.get('model') or model} ({purpose}): "
+                    f"{int((time.monotonic() - started) * 1000)} мс, "
+                    f"${usage.get('cost') or 0:.6f}, "
+                    f"{usage.get('prompt_tokens')}/{usage.get('completion_tokens')} токенов"
+                ),
             )
             result["_model"] = payload.get("model") or model
             return result

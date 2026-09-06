@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
+from app import monitor, similar
 from app.config import settings
 from app.db import SessionLocal, init_db
 from app.llm import summarize_reviews
@@ -30,6 +31,11 @@ MAX_BROWSE_PAGES_PER_RUN = 5
 # ponytail: a process-local lock. Single-process deployment; if the service is ever
 # forked across workers this becomes an advisory row in the DB.
 _run_lock = threading.Lock()
+
+
+def is_running() -> bool:
+    """True while a crawl holds the lock. Advisory: the lock itself is the real guard."""
+    return _run_lock.locked()
 
 
 def day_start_utc(now: datetime | None = None) -> datetime:
@@ -156,6 +162,8 @@ def _upsert_summary(session, game: Game, kind: str, **fields) -> None:
 def process_game(session, slug: str) -> tuple[str, str | None]:
     """Scrape and summarise one game. Returns (status, error)."""
     client = default_client()
+    monitor.emit(type="game_start", worker="crawler", status="busy", detail=f"fetching {slug}",
+                 slug=slug, message=f"загружаю карточку {slug}")
     data = metacritic.fetch_game(slug, client=client)
     game = _upsert_game(session, data)
     # SQLite takes a single write lock. Commit before every slow network call, or the
@@ -164,6 +172,9 @@ def process_game(session, slug: str) -> tuple[str, str | None]:
 
     llm_error: str | None = None
     for kind in ("critic", "user"):
+        monitor.emit(type="reviews", worker="crawler", status="busy",
+                     detail=f"reviews {slug} {kind}", slug=slug,
+                     message=f"отзывы {kind} для {slug}")
         scraped = metacritic.fetch_reviews(slug, kind, settings.reviews_per_kind, client)
         _upsert_reviews(session, game, kind, scraped)
 
@@ -187,6 +198,9 @@ def process_game(session, slug: str) -> tuple[str, str | None]:
             continue
 
         session.commit()
+        monitor.emit(type="summary_start", worker="crawler", status="busy",
+                     detail=f"summarizing {slug} {kind}", slug=slug,
+                     message=f"резюме {kind} для {slug} ({len(stored)} отзывов)")
         try:
             result = summarize_reviews(
                 game.title, kind, [(r.author, r.score, r.text) for r in stored], game.id
@@ -195,6 +209,8 @@ def process_game(session, slug: str) -> tuple[str, str | None]:
             # Keep the scraped data; the game stays due for a retry next run.
             llm_error = f"{kind}: {exc}"
             log.warning("summary failed for %s (%s): %s", slug, kind, exc)
+            monitor.emit(type="error", worker="crawler", status="busy", slug=slug,
+                         message=f"резюме {kind} для {slug} не удалось: {exc}")
             continue
         _upsert_summary(session, game, kind, review_count=len(stored), **result)
         session.commit()
@@ -217,6 +233,7 @@ def run_crawl(
 
     if not _run_lock.acquire(blocking=False):
         log.warning("a crawl is already running, skipping")
+        monitor.emit(type="run_skipped", message=f"обход ({reason}) пропущен: уже идёт другой")
         with SessionLocal() as session:
             run = CrawlRun(
                 reason=reason, source="-", status="skipped", finished_at=utcnow(),
@@ -238,6 +255,9 @@ def _run_crawl(reason: str, limit: int, now: datetime | None) -> CrawlRun:
         session.add(run)
         session.commit()
         log.info("crawl #%d started (%s, source=%s)", run.id, reason, source)
+        monitor.emit(type="run_start", worker="crawler", status="busy",
+                     detail=f"building list ({source})", run_id=run.id, source=source,
+                     reason=reason, message=f"обход #{run.id} начат ({reason}, {source})")
 
         try:
             slugs, source = select_slugs(session, source, limit, now)
@@ -245,10 +265,15 @@ def _run_crawl(reason: str, limit: int, now: datetime | None) -> CrawlRun:
             log.exception("could not build the crawl list")
             run.status, run.error, run.finished_at = "failed", str(exc)[:1000], utcnow()
             session.commit()
+            monitor.emit(type="run_end", worker="crawler", status="idle", run_id=run.id,
+                         message=f"обход #{run.id} упал на построении списка: {exc}")
             return run
 
         run.source, run.planned = source, len(slugs)
         session.commit()
+        monitor.emit(type="run_planned", worker="crawler", status="busy",
+                     detail=f"{source}: 0/{len(slugs)}", source=source, planned=len(slugs),
+                     message=f"к обработке {len(slugs)} игр ({source})")
 
         for slug in slugs:
             try:
@@ -263,12 +288,23 @@ def _run_crawl(reason: str, limit: int, now: datetime | None) -> CrawlRun:
             else:
                 run.processed += 1
             session.commit()
+            monitor.emit(
+                type="game_failed" if status == "failed" else "game_done",
+                worker="crawler", status="busy", slug=slug,
+                detail=f"{run.processed + run.failed}/{run.planned}",
+                message=f"{slug}: {status}" + (f" — {error}" if error else ""),
+            )
 
         run.status, run.finished_at = "ok" if not run.failed else "partial", utcnow()
         session.commit()
+        # Descriptions and platforms may have changed without the game count changing.
+        similar.invalidate()
         log.info(
             "crawl #%d done: %d processed, %d failed", run.id, run.processed, run.failed
         )
+        monitor.emit(type="run_end", worker="crawler", status="idle", run_id=run.id,
+                     message=f"обход #{run.id} завершён: {run.processed} обработано, "
+                             f"{run.failed} с ошибкой")
         return run
 
 
