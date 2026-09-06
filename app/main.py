@@ -44,7 +44,7 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": (
         "default-src 'self'; "
-        "img-src 'self' https://i.ytimg.com data:; "
+        "img-src 'self' https://i.ytimg.com https://www.metacritic.com data:; "
         "frame-src https://www.youtube.com; "
         "script-src 'self'; "
         "style-src 'self'; "
@@ -82,7 +82,8 @@ def safe_url(url: str | None) -> str | None:
     parsed = urlparse(url)
     if parsed.scheme in ("http", "https") and parsed.netloc:
         return url
-    if not parsed.scheme and url.startswith("/"):
+    # A leading "//" is protocol-relative and points off-site, not at our own tree.
+    if not parsed.scheme and url.startswith("/") and not url.startswith("//"):
         return url  # our own /covers/... paths
     return None
 
@@ -142,8 +143,9 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
-#: Wall-clock of the last accepted manual crawl (see MANUAL_RUN_MIN_INTERVAL).
-_last_manual_run = 0.0
+#: When the last manual crawl was accepted, on the monotonic clock. `None` means never
+#: — 0.0 would not do, because monotonic() starts near zero at boot.
+_last_manual_run: float | None = None
 
 
 def get_session():
@@ -378,8 +380,13 @@ def is_same_origin(request: Request) -> bool:
     origin = request.headers.get("origin")
     if origin is None:
         return True
-    # Compare hosts, not full URLs: behind nginx the app never sees the public scheme.
-    return urlparse(origin).netloc == request.headers.get("host", "")
+
+    # Host names only: the app never sees the public scheme behind nginx, and nginx
+    # forwards `Host` without a port while `Origin` carries one.
+    def host_of(value: str) -> str:
+        return value.rsplit("@", 1)[-1].rsplit(":", 1)[0].strip("[]").lower()
+
+    return host_of(urlparse(origin).netloc) == host_of(request.headers.get("host", ""))
 
 
 @app.post("/monitor/run")
@@ -392,14 +399,15 @@ def monitor_run(request: Request):
     if is_running():
         return JSONResponse({"detail": "обход уже идёт"}, status_code=409)
 
-    waited = time.monotonic() - _last_manual_run
-    if waited < MANUAL_RUN_MIN_INTERVAL:
-        retry_after = int(MANUAL_RUN_MIN_INTERVAL - waited) + 1
-        return JSONResponse(
-            {"detail": f"слишком часто, попробуйте через {retry_after} с"},
-            status_code=429,
-            headers={"Retry-After": str(retry_after)},
-        )
+    if _last_manual_run is not None:
+        waited = time.monotonic() - _last_manual_run
+        if waited < MANUAL_RUN_MIN_INTERVAL:
+            retry_after = int(MANUAL_RUN_MIN_INTERVAL - waited) + 1
+            return JSONResponse(
+                {"detail": f"слишком часто, попробуйте через {retry_after} с"},
+                status_code=429,
+                headers={"Retry-After": str(retry_after)},
+            )
     _last_manual_run = time.monotonic()
 
     # The 409 above is advisory UX; a request that slips through the race still hits

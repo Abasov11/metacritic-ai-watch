@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Metacritic AI Watch{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
+  <!-- htmx injects an inline <style> for .htmx-indicator unless told not to; our CSP
+       forbids inline styles and this stylesheet does the indicator itself. -->
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
   <script src="/static/htmx.min.js" defer></script>
 </head>
 <body>

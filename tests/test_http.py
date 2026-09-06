@@ -75,6 +75,15 @@ def test_client_errors_are_not_retried():
     assert len(calls) == 1
 
 
+def test_a_redirect_without_a_location_is_an_error_not_a_success():
+    # follow_redirects handles the normal case; a bare 3xx must not look like 200.
+    def handler(request):
+        return httpx.Response(304)
+
+    with pytest.raises(ScrapeError, match="304"):
+        _client_with(handler).get("https://example.test/")
+
+
 def test_credentials_in_a_url_never_reach_the_error_message():
     def handler(request):
         return httpx.Response(403)

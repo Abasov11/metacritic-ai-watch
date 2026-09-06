@@ -54,8 +54,43 @@ def test_csp_allows_only_what_the_pages_actually_need(client):
     csp = client.get("/").headers["Content-Security-Policy"]
     assert "script-src 'self'" in csp  # no 'unsafe-inline'
     assert "https://i.ytimg.com" in csp  # let's play thumbnails
+    assert "https://www.metacritic.com" in csp  # cover fallback when the copy failed
     assert "frame-src https://www.youtube.com" in csp  # trailer embeds
     assert "unsafe-inline" not in csp and "unsafe-eval" not in csp
+
+
+def test_a_cover_that_failed_to_cache_is_still_allowed_by_the_csp(client):
+    with main.SessionLocal() as session:
+        game = session.scalar(select(Game).where(Game.slug == "a-game"))
+        game.cover_path = None
+        game.cover_url = "https://www.metacritic.com/a/img/catalog/x.jpg"
+        session.commit()
+    response = client.get("/")
+    assert "https://www.metacritic.com/a/img/catalog/x.jpg" in response.text
+    host = "https://www.metacritic.com"
+    csp = response.headers["Content-Security-Policy"]
+    img_src = next(part for part in csp.split(";") if part.strip().startswith("img-src"))
+    assert host in img_src
+
+
+def test_htmx_is_told_not_to_inject_inline_styles(client):
+    # A strict style-src would block htmx's injected <style> block.
+    assert '"includeIndicatorStyles":false' in client.get("/").text
+
+
+def test_the_first_manual_run_after_boot_is_not_rate_limited(client, monkeypatch):
+    # monotonic() starts near zero at boot, so a 0.0 sentinel would refuse this.
+    monkeypatch.setattr(main, "_last_manual_run", None)
+    monkeypatch.setattr(main.time, "monotonic", lambda: 3.0)
+    assert client.post("/monitor/run").status_code == 202
+
+
+def test_origin_with_an_explicit_port_still_matches_the_host(client):
+    response = client.post(
+        "/monitor/run",
+        headers={"Origin": "https://example.test:8443", "Host": "example.test"},
+    )
+    assert response.status_code == 202
 
 
 def test_no_inline_script_survives_in_the_templates():

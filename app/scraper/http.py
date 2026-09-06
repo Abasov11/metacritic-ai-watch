@@ -90,7 +90,7 @@ class PoliteClient:
                 )
             else:
                 if response.status_code not in RETRY_STATUSES:
-                    if response.is_error:
+                    if not response.is_success:
                         # Not worth retrying, but callers still expect one error type.
                         raise ScrapeError(f"GET {scrub(url)} returned HTTP {response.status_code}")
                     return response
