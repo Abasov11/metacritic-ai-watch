@@ -1,0 +1,6 @@
+pyproject.toml
+metacritic_ai_watch.egg-info/PKG-INFO
+metacritic_ai_watch.egg-info/SOURCES.txt
+metacritic_ai_watch.egg-info/dependency_links.txt
+metacritic_ai_watch.egg-info/requires.txt
+metacritic_ai_watch.egg-info/top_level.txt
