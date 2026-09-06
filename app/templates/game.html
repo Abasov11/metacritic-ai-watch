@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}{{ game.title }} — Metacritic AI Watch{% endblock %}
+{% block headeraside %}<a class="btn btn--ghost" href="/">К списку</a>{% endblock %}
+
+{% block content %}
+  <article class="game">
+    <div class="game__head">
+      <div class="cover cover--lg">{{ m.cover(game, "260px") }}</div>
+
+      <div class="game__facts">
+        <h1 class="game__title">{{ game.title }}</h1>
+        <dl class="facts">
+          {% if game.developer %}<dt>Разработчик</dt><dd>{{ game.developer }}</dd>{% endif %}
+          {% if game.publisher %}<dt>Издатель</dt><dd>{{ game.publisher }}</dd>{% endif %}
+          {% if game.release_date %}<dt>Дата выхода</dt><dd>{{ game.release_date }}</dd>{% endif %}
+          {% if game.genres %}<dt>Жанры</dt><dd>{{ game.genres | join(", ") }}</dd>{% endif %}
+        </dl>
+        <p class="game__links">
+          {% if game.metacritic_url %}
+            <a class="btn btn--ghost" href="{{ game.metacritic_url }}" rel="noopener" target="_blank">
+              Страница на Metacritic
+            </a>
+          {% endif %}
+          {% if game.video_url and not youtube_embed(game.video_url) %}
+            <a class="btn btn--ghost" href="{{ game.video_url }}" rel="noopener" target="_blank">
+              Трейлер
+            </a>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    {% if game.description %}
+      <section class="section">
+        <h2 class="section__title">Описание</h2>
+        <p class="prose">{{ game.description }}</p>
+      </section>
+    {% endif %}
+
+    {% if game.video_url and youtube_embed(game.video_url) %}
+      <section class="section">
+        <h2 class="section__title">Трейлер</h2>
+        <div class="video">
+          <iframe src="{{ youtube_embed(game.video_url) }}" title="Трейлер: {{ game.title }}"
+                  allow="accelerometer; encrypted-media; picture-in-picture"
+                  referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy"></iframe>
+        </div>
+      </section>
+    {% endif %}
+
+    <section class="section">
+      <h2 class="section__title">Платформы и оценки</h2>
+      <table class="table">
+        <thead><tr><th scope="col">Платформа</th><th scope="col">Metascore</th><th scope="col">Userscore</th></tr></thead>
+        <tbody>
+          {% for p in game.platforms %}
+            <tr>
+              <th scope="row">{{ p.name }}</th>
+              <td>{{ m.score_badge(p.metascore, 100, "Metascore") }}</td>
+              <td>{{ m.score_badge(p.userscore, 10, "Userscore") }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2 class="section__title">Резюме отзывов</h2>
+      <div class="summaries">
+        {% for kind, heading in [("critic", "Критики"), ("user", "Игроки")] %}
+          {% set s = summaries.get(kind) %}
+          <div class="summary">
+            <h3 class="summary__title">{{ heading }}</h3>
+            {% if s and (s.likes or s.dislikes or s.model) %}
+              {% if s.likes %}
+                <p class="summary__label summary__label--plus">Нравится</p>
+                <ul class="summary__list">{% for x in s.likes %}<li>{{ x }}</li>{% endfor %}</ul>
+              {% endif %}
+              {% if s.dislikes %}
+                <p class="summary__label summary__label--minus">Не нравится</p>
+                <ul class="summary__list">{% for x in s.dislikes %}<li>{{ x }}</li>{% endfor %}</ul>
+              {% endif %}
+              {% if s.summary %}<p class="summary__text">{{ s.summary }}</p>{% endif %}
+              <p class="summary__meta">
+                по {{ s.review_count }} отзывам
+                {% if s.model %}<span class="dot">·</span>{{ s.model }}{% endif %}
+                <span class="dot">·</span>{{ s.updated_at.strftime("%d.%m.%Y %H:%M UTC") }}
+              </p>
+            {% elif s %}
+              <p class="empty">{{ s.summary or "Отзывов пока нет." }}</p>
+            {% else %}
+              <p class="empty">Ещё не обработано.</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% if similar %}
+      <section class="section">
+        <h2 class="section__title">Похожие игры</h2>
+        <ul class="grid grid--tight">
+          {% for other in similar %}
+            <li class="card">
+              <a class="card__link" href="/game/{{ other.slug }}">
+                <div class="cover">{{ m.cover(other, "160px") }}</div>
+                <h3 class="card__title">{{ other.title }}</h3>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    <section class="section">
+      <h2 class="section__title">Исходные отзывы</h2>
+      {% for kind, heading in [("critic", "Критики"), ("user", "Игроки")] %}
+        <details class="details">
+          <summary class="details__summary">{{ heading }} ({{ reviews[kind] | length }})</summary>
+          {% if reviews[kind] %}
+            <ul class="reviews">
+              {% for r in reviews[kind] %}
+                <li class="review">
+                  <p class="review__head">
+                    {{ m.score_badge(r.score, 100 if kind == "critic" else 10, "Оценка") }}
+                    <span class="review__author">{{ r.author or "аноним" }}</span>
+                    {% if r.date %}<span class="dot">·</span><span class="review__date">{{ r.date }}</span>{% endif %}
+                  </p>
+                  <p class="review__text">{{ r.text }}</p>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="empty">Отзывов нет.</p>
+          {% endif %}
+        </details>
+      {% endfor %}
+    </section>
+  </article>
+{% endblock %}

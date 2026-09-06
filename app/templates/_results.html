@@ -1,0 +1,51 @@
+{% import "_macros.html" as m %}
+<div id="results">
+  <p class="results__count" role="status">
+    {% if total %}Найдено игр: {{ total }}{% if pages > 1 %} · страница {{ page }} из {{ pages }}{% endif %}
+    {% else %}Ничего не найдено. Попробуйте изменить запрос или снять фильтры.{% endif %}
+  </p>
+
+  <ul class="grid">
+    {% for game in games %}
+      <li class="card">
+        <a class="card__link" href="/game/{{ game.slug }}">
+          <div class="cover">
+            {{ m.cover(game, "(max-width: 640px) 45vw, 220px") }}
+            {% if game.best_metascore is not none %}
+              <span class="cover__score score score--{{ m.score_class(game.best_metascore, 100) | trim }}"
+                    title="Лучший Metascore среди платформ">{{ game.best_metascore }}</span>
+            {% endif %}
+          </div>
+          <h3 class="card__title">{{ game.title }}</h3>
+        </a>
+        <p class="card__meta">
+          {{ game.developer or "разработчик неизвестен" }}
+          {% if game.release_date %}<span class="dot">·</span>{{ game.release_date }}{% endif %}
+        </p>
+        <ul class="badges">
+          {% for p in game.platforms %}
+            <li class="badge">
+              <span class="badge__name">{{ p.name }}</span>
+              {{ m.score_badge(p.metascore, 100, "Metascore") }}
+              {{ m.score_badge(p.userscore, 10, "Userscore") }}
+            </li>
+          {% endfor %}
+        </ul>
+      </li>
+    {% endfor %}
+  </ul>
+
+  {% if pages > 1 %}
+    <nav class="pager" aria-label="Постраничная навигация">
+      <a class="pager__btn {% if page <= 1 %}is-disabled{% endif %}"
+         href="{{ page_url(page - 1) }}" hx-get="{{ page_url(page - 1) }}"
+         hx-target="#results" hx-swap="outerHTML" hx-push-url="true"
+         {% if page <= 1 %}aria-disabled="true" tabindex="-1"{% endif %}>Назад</a>
+      <span class="pager__pos">{{ page }} / {{ pages }}</span>
+      <a class="pager__btn {% if page >= pages %}is-disabled{% endif %}"
+         href="{{ page_url(page + 1) }}" hx-get="{{ page_url(page + 1) }}"
+         hx-target="#results" hx-swap="outerHTML" hx-push-url="true"
+         {% if page >= pages %}aria-disabled="true" tabindex="-1"{% endif %}>Вперёд</a>
+    </nav>
+  {% endif %}
+</div>
