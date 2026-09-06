@@ -12,6 +12,7 @@ import argparse
 import json
 import logging
 import threading
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -460,6 +461,42 @@ def _run_crawl(reason: str, limit: int, now: datetime | None) -> CrawlRun:
         return run
 
 
+def refresh_letsplays(limit: int | None = None) -> int:
+    """Retry the transcript for videos we found but could not read."""
+    init_db()
+    with SessionLocal() as session:
+        pending = session.scalars(
+            select(LetsPlay)
+            .where(LetsPlay.video_id.is_not(None), LetsPlay.transcript_source == "none")
+            .order_by(LetsPlay.game_id)
+        ).all()
+        slugs = [session.get(Game, row.game_id).slug for row in pending]
+
+    slugs = slugs[: limit or len(slugs)]
+    print(f"к пересчёту: {len(slugs)} записей с роликом, но без расшифровки")
+    got = still_none = 0
+    reasons: Counter[str] = Counter()
+    for slug in slugs:
+        with SessionLocal() as session:
+            game = session.scalar(select(Game).where(Game.slug == slug))
+            existing = session.scalar(select(LetsPlay).where(LetsPlay.game_id == game.id))
+            if existing is not None:
+                session.delete(existing)
+                session.commit()
+            process_letsplay(session, game)
+            row = session.scalar(select(LetsPlay).where(LetsPlay.game_id == game.id))
+            if row.transcript_source != "none":
+                got += 1
+                log.info("%s: %s, %d символов", slug, row.transcript_source, row.transcript_chars)
+            else:
+                still_none += 1
+                reasons[(row.error or "без причины").split(";")[0][:70]] += 1
+    print(f"получили расшифровку: {got}, осталось без неё: {still_none}")
+    for reason, count in reasons.most_common():
+        print(f"  {count:>3} x {reason}")
+    return 0
+
+
 def backfill_tags(limit: int | None = None) -> int:
     """Tag every game in the database that has no current tags."""
     init_db()
@@ -509,6 +546,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=None, help="max games this run")
     parser.add_argument("--reason", default="manual")
     parser.add_argument(
+        "--refresh-letsplays",
+        action="store_true",
+        help="retry transcripts for videos found without one, then exit",
+    )
+    parser.add_argument(
         "--backfill-tags",
         action="store_true",
         help="tag every game already in the database, then exit",
@@ -523,6 +565,8 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    if args.refresh_letsplays:
+        return refresh_letsplays(args.limit)
     if args.backfill_tags:
         return backfill_tags(args.limit)
     if args.refresh_covers:

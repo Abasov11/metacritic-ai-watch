@@ -19,7 +19,9 @@ dependencies = [
     "pydantic-settings>=2.3",
     "python-multipart>=0.0.9",
     "yt-dlp>=2024.8.6",
-    "youtube-transcript-api>=1.0",
+    # Mints the PO token yt-dlp needs before YouTube will hand over captions.
+    # Needs its companion node script built; see README.
+    "bgutil-ytdlp-pot-provider>=1.3",
 ]
 
 [project.optional-dependencies]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -635,3 +637,94 @@ def test_four_word_titles_still_use_word_overlap():
     }
     assert len(youtube._title_words("Marsupilami 2 - Salsa Palombia")) == 3
     assert youtube.is_letsplay(entry, "Marsupilami 2 - Salsa Palombia") is True
+
+
+# ------------------------------------------------------------------ json3 captions
+
+
+def test_json3_segments_are_joined_into_one_line():
+    payload = {
+        "events": [
+            {"segs": [{"utf8": "привет"}, {"utf8": " мир"}]},
+            {"segs": [{"utf8": "\n"}, {"utf8": "  вот   так  "}]},
+        ]
+    }
+    assert youtube.parse_json3(json.dumps(payload)) == "привет мир вот так"
+    assert youtube.parse_json3(payload) == "привет мир вот так"
+
+
+def test_json3_handles_the_shapes_youtube_actually_sends():
+    # Auto-generated captions carry timing-only events with no `segs` at all.
+    payload = {
+        "events": [
+            {"tStartMs": 0},
+            {"segs": [{"utf8": "one"}, {"acAsrConf": 0}]},
+            {"segs": [{"utf8": " two"}]},
+        ]
+    }
+    assert youtube.parse_json3(json.dumps(payload)) == "one two"
+
+
+@pytest.mark.parametrize(
+    "payload", ["не json", "", "[]", '"строка"', "null", '{"events": null}', '{"events": [1, 2]}']
+)
+def test_broken_caption_files_yield_nothing_instead_of_raising(payload):
+    assert youtube.parse_json3(payload) == ""
+
+
+# ------------------------------------------------------------------ yt-dlp options
+
+
+def test_the_cache_lives_under_the_data_directory(monkeypatch, tmp_path):
+    # ~/.cache is read-only under the systemd unit, so the cache must not go there.
+    monkeypatch.setattr(youtube.settings, "data_dir", tmp_path)
+    assert youtube.cache_dir() == tmp_path / "yt-dlp-cache"
+    assert youtube.base_options()["cachedir"] == str(tmp_path / "yt-dlp-cache")
+
+
+def test_extraction_options_carry_the_whole_recipe(monkeypatch, tmp_path):
+    monkeypatch.setattr(youtube.settings, "data_dir", tmp_path)
+    monkeypatch.setattr(youtube.settings, "youtube_cookies_file", "/tmp/cookies.txt")
+    monkeypatch.setattr(youtube.settings, "youtube_pot_script", "/opt/generate_once.js")
+    monkeypatch.setattr(youtube.settings, "youtube_js_runtime", "node")
+    monkeypatch.setattr(youtube.settings, "youtube_remote_components", "ejs:github")
+
+    options = youtube.extraction_options()
+    assert options["cookiefile"] == "/tmp/cookies.txt"
+    # The Python API wants a mapping here, unlike the --js-runtimes flag.
+    assert options["js_runtimes"] == {"node": {}}
+    assert options["remote_components"] == ["ejs:github"]
+    assert options["extractor_args"] == {
+        "youtubepot-bgutilscript": {"script_path": ["/opt/generate_once.js"]}
+    }
+
+
+def test_missing_cookies_or_pot_script_simply_drop_out(monkeypatch, tmp_path):
+    monkeypatch.setattr(youtube.settings, "data_dir", tmp_path)
+    monkeypatch.setattr(youtube.settings, "youtube_cookies_file", "")
+    monkeypatch.setattr(youtube.settings, "youtube_pot_script", "")
+    monkeypatch.setattr(youtube.settings, "youtube_remote_components", "")
+    monkeypatch.setattr(youtube.settings, "youtube_js_runtime", "")
+
+    options = youtube.extraction_options()
+    for key in ("cookiefile", "extractor_args", "js_runtimes", "remote_components"):
+        assert key not in options
+    assert options["cachedir"]  # the cache is never optional
+
+
+def test_search_does_not_ask_for_the_heavy_extraction_options(monkeypatch, tmp_path):
+    # Flat search works without cookies or a PO token; keep it cheap.
+    monkeypatch.setattr(youtube.settings, "data_dir", tmp_path)
+    monkeypatch.setattr(youtube.settings, "youtube_pot_script", "/opt/generate_once.js")
+    assert "extractor_args" not in youtube.base_options()
+    assert "js_runtimes" not in youtube.base_options()
+
+
+def test_a_refused_transcript_is_recorded_not_raised(monkeypatch):
+    def refused(video_id):
+        raise RuntimeError("Sign in to confirm you're not a bot")
+
+    monkeypatch.setattr(youtube, "fetch_subtitles", refused)
+    text, source, error = youtube.get_transcript("v", 60)
+    assert (text, source) == ("", "none")
+    assert "not a bot" in error

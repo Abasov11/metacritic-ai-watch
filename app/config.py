@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     #: Netscape cookie jar. YouTube blocks video extraction from datacenter IPs
     #: without one, so subtitles and audio are unavailable until this is set.
     youtube_cookies_file: str = ""
+    #: Built `generate_once.js` from bgutil-ytdlp-pot-provider. Empty means the PO
+    #: token plugin stays inactive and YouTube refuses the subtitle request.
+    youtube_pot_script: str = ""
+    #: yt-dlp needs a JS runtime to solve YouTube's challenges.
+    youtube_js_runtime: str = "node"
+    #: Lets yt-dlp fetch its challenge solver; cached under DATA_DIR.
+    youtube_remote_components: str = "ejs:github"
     youtube_whisper_enabled: bool = False
     youtube_whisper_model: str = "small"
     youtube_whisper_min_free_mb: int = 2048

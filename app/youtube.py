@@ -4,19 +4,28 @@ Search runs through yt-dlp's flat extractor (one request, and it already carries
 counts). The spoken text comes from YouTube's own captions; only when there are none
 do we fall back to downloading the audio and running Whisper locally.
 
-Both of those last steps need full video extraction, which YouTube refuses from
-datacenter IPs ("Sign in to confirm you're not a bot"). Point `YOUTUBE_COOKIES_FILE`
-at an exported cookie jar to lift that; without it the stage records `none` and the
-crawl carries on.
+Reading captions needs full video extraction, which YouTube refuses from datacenter IPs
+("Sign in to confirm you're not a bot"). Three things have to line up at once, and
+missing any one of them brings back the refusal:
+
+* `YOUTUBE_COOKIES_FILE` — an exported cookie jar;
+* a JS runtime (`YOUTUBE_JS_RUNTIME`, node) plus `YOUTUBE_REMOTE_COMPONENTS`, which
+  lets yt-dlp fetch the challenge solver;
+* `YOUTUBE_POT_SCRIPT` — the built `generate_once.js` of bgutil-ytdlp-pot-provider,
+  which mints the PO token. Without the path the plugin is silently inactive.
+
+`youtube-transcript-api` cannot do this at all: it ignores cookies. When any piece is
+missing the stage records `none` with the reason and the crawl carries on.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+import tempfile
 import time
 from dataclasses import asdict, dataclass
-from http.cookiejar import MozillaCookieJar
 from pathlib import Path
 
 from app.config import settings
@@ -141,19 +150,48 @@ def has_store_link(entry: dict) -> bool:
     return bool(STORE_LINK.search(entry.get("description") or ""))
 
 
-def _ytsearch(query: str) -> list[dict]:
-    import yt_dlp
+def cache_dir() -> Path:
+    """yt-dlp caches its challenge solver here.
 
-    options = {
+    Never `~/.cache`: the systemd unit runs with `ProtectHome=read-only`, so a write
+    there fails and the solver is re-fetched (or refused) on every call.
+    """
+    return settings.data_dir / "yt-dlp-cache"
+
+
+def base_options() -> dict:
+    """Options shared by every yt-dlp call."""
+    options: dict = {
         "quiet": True,
         "no_warnings": True,
-        "skip_download": True,
-        "extract_flat": True,
         "noprogress": True,
         "socket_timeout": 20,
+        "cachedir": str(cache_dir()),
     }
     if settings.youtube_cookies_file:
         options["cookiefile"] = settings.youtube_cookies_file
+    return options
+
+
+def extraction_options() -> dict:
+    """Everything full video extraction needs on top of the basics."""
+    options = base_options()
+    if settings.youtube_js_runtime:
+        # The Python API wants {runtime: config}, unlike the --js-runtimes flag.
+        options["js_runtimes"] = {settings.youtube_js_runtime: {}}
+    if settings.youtube_remote_components:
+        options["remote_components"] = [settings.youtube_remote_components]
+    if settings.youtube_pot_script:
+        options["extractor_args"] = {
+            "youtubepot-bgutilscript": {"script_path": [settings.youtube_pot_script]}
+        }
+    return options
+
+
+def _ytsearch(query: str) -> list[dict]:
+    import yt_dlp
+
+    options = base_options() | {"skip_download": True, "extract_flat": True}
     with yt_dlp.YoutubeDL(options) as ydl:
         result = ydl.extract_info(query, download=False) or {}
     return [e for e in (result.get("entries") or []) if isinstance(e, dict)]
@@ -186,26 +224,55 @@ def search_letsplay(game_title: str) -> Video | None:
 # --------------------------------------------------------------------- transcript
 
 
-def _cookie_session():
-    """A requests session carrying the operator's YouTube cookies, if configured."""
-    import requests
+def parse_json3(payload: str | dict) -> str:
+    """Flatten YouTube's json3 caption format into one line of speech.
 
-    session = requests.Session()
-    path = settings.youtube_cookies_file
-    if path and Path(path).is_file():
-        jar = MozillaCookieJar(path)
-        jar.load(ignore_discard=True, ignore_expires=True)
-        session.cookies = jar
-    return session
+    Each event holds `segs`, each seg a `utf8` fragment; auto-generated captions split
+    mid-word and pad with newlines, so whitespace is collapsed at the end.
+    """
+    if isinstance(payload, str):
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            log.warning("caption file is not valid json3")
+            return ""
+    else:
+        data = payload
+    if not isinstance(data, dict):
+        return ""
+    pieces: list[str] = []
+    for event in data.get("events") or []:
+        if not isinstance(event, dict):
+            continue
+        for segment in event.get("segs") or []:
+            if isinstance(segment, dict) and isinstance(segment.get("utf8"), str):
+                pieces.append(segment["utf8"])
+    return " ".join("".join(pieces).split())
 
 
 def fetch_subtitles(video_id: str) -> str:
     """Caption text, auto-generated included. Empty string when there are none."""
-    from youtube_transcript_api import YouTubeTranscriptApi
+    import yt_dlp
 
-    api = YouTubeTranscriptApi(http_client=_cookie_session())
-    fetched = api.fetch(video_id, languages=list(TRANSCRIPT_LANGUAGES))
-    return " ".join(snippet.text.strip() for snippet in fetched if snippet.text.strip())
+    with tempfile.TemporaryDirectory() as workdir:
+        options = extraction_options() | {
+            "skip_download": True,
+            "writesubtitles": True,
+            "writeautomaticsub": True,
+            "subtitleslangs": list(TRANSCRIPT_LANGUAGES),
+            "subtitlesformat": "json3",
+            "outtmpl": str(Path(workdir) / "%(id)s.%(ext)s"),
+        }
+        with yt_dlp.YoutubeDL(options) as ydl:
+            ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+
+        # The subtitle files leave with the temporary directory either way.
+        for language in TRANSCRIPT_LANGUAGES:
+            for path in sorted(Path(workdir).glob(f"*.{language}*.json3")):
+                text = parse_json3(path.read_text(encoding="utf-8"))
+                if text:
+                    return text
+    return ""
 
 
 def whisper_is_affordable() -> tuple[bool, str]:
