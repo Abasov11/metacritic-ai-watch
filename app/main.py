@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import re
+import threading
 from contextlib import asynccontextmanager
 from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app import similar
+from app import monitor, similar
 from app.config import BASE_DIR, settings
+from app.crawler import is_running, run_crawl
 from app.db import SessionLocal, init_db
 from app.models import CrawlRun, Game, Platform, Review
 from app.scheduler import create_scheduler
@@ -24,6 +28,9 @@ log = logging.getLogger(__name__)
 
 PER_PAGE = 24
 REVIEWS_SHOWN = 10
+RECENT_RUNS = 10
+SSE_POLL_SECONDS = 0.5
+SSE_HEARTBEAT_SECONDS = 15
 SORTS = {
     "metascore_desc": (Game.best_metascore, "desc"),
     "metascore_asc": (Game.best_metascore, "asc"),
@@ -47,6 +54,8 @@ def youtube_embed(url: str | None) -> str | None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    monitor.reset()
+    monitor.emit(type="startup", message="сервис запущен")
     scheduler = create_scheduler()
     scheduler.start()
     log.info("scheduler started, crawling every %d min", settings.crawl_interval_minutes)
@@ -213,6 +222,68 @@ def game_page(request: Request, slug: str, session: Session = Depends(get_sessio
     )
 
 
+# ------------------------------------------------------------------------- monitor
+
+
+def recent_runs(session: Session) -> list[CrawlRun]:
+    return list(
+        session.scalars(select(CrawlRun).order_by(CrawlRun.id.desc()).limit(RECENT_RUNS)).all()
+    )
+
+
+@app.get("/monitor", response_class=HTMLResponse)
+def monitor_page(request: Request, session: Session = Depends(get_session)):
+    return templates.TemplateResponse(
+        request,
+        "monitor.html",
+        {"state": monitor.snapshot(), "runs": recent_runs(session), "busy": is_running()},
+    )
+
+
+@app.get("/monitor/stream")
+async def monitor_stream(request: Request):
+    """Server-sent events: a state snapshot, then every new event as it happens."""
+
+    async def gen():
+        snapshot = monitor.snapshot()
+        yield f"event: state\ndata: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
+        seq = snapshot["seq"]
+        idle_for = 0.0
+        while not await request.is_disconnected():
+            new = monitor.since(seq)
+            if new:
+                seq = new[-1]["seq"]
+                for event in new:
+                    yield f"event: log\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+                state = monitor.snapshot(with_events=False)
+                yield f"event: state\ndata: {json.dumps(state, ensure_ascii=False)}\n\n"
+                idle_for = 0.0
+            else:
+                idle_for += SSE_POLL_SECONDS
+                if idle_for >= SSE_HEARTBEAT_SECONDS:
+                    idle_for = 0.0
+                    yield ": heartbeat\n\n"
+            await asyncio.sleep(SSE_POLL_SECONDS)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/monitor/run")
+def monitor_run():
+    """Force a crawl. 409 while one is already running."""
+    if is_running():
+        return JSONResponse({"detail": "обход уже идёт"}, status_code=409)
+    # The 409 above is advisory UX; a request that slips through the race still hits
+    # the crawler's own lock and comes back as a `skipped` run.
+    threading.Thread(target=run_crawl, args=("manual",), daemon=True).start()
+    monitor.emit(type="run_requested", message="запуск обхода вручную из веб-интерфейса")
+    return JSONResponse({"detail": "обход запущен"}, status_code=202)
+
+
 # ----------------------------------------------------------------------------- api
 
 
@@ -244,9 +315,13 @@ def api_game(slug: str, session: Session = Depends(get_session)):
 @app.get("/healthz")
 def healthz(session: Session = Depends(get_session)):
     run = session.scalar(select(CrawlRun).order_by(CrawlRun.id.desc()).limit(1))
+    state = monitor.snapshot(with_events=False)
     return {
         "status": "ok",
         "games": session.scalar(select(func.count(Game.id))) or 0,
+        "crawl_running": is_running(),
+        "workers": state["workers"],
+        "today": state["today"],
         "last_run": run
         and {
             "id": run.id,

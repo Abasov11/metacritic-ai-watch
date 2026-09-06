@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Мониторинг — Metacritic AI Watch{% endblock %}
+
+{% block content %}
+  <div class="mon__head">
+    <h1 class="mon__title">Мониторинг</h1>
+    <div class="mon__actions">
+      <span id="conn" class="conn conn--wait">подключение…</span>
+      <button id="run" class="btn" type="button" {% if busy %}disabled{% endif %}>
+        Запустить обход сейчас
+      </button>
+    </div>
+  </div>
+  <p id="run-msg" class="mon__msg" role="status"></p>
+
+  <section class="section">
+    <h2 class="section__title">Воркеры</h2>
+    <ul id="workers" class="workers">
+      {% for name, w in state.workers.items() %}
+        <li class="worker" data-worker="{{ name }}">
+          <span class="worker__dot worker__dot--{{ w.status }}" aria-hidden="true"></span>
+          <div>
+            <p class="worker__name">{{ name }}</p>
+            <p class="worker__state">{{ w.status }}{% if w.detail %} · {{ w.detail }}{% endif %}</p>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">Текущий обход</h2>
+    <div id="run-box">
+      {% if state.run %}
+        {% set r = state.run %}
+        <p class="mon__line">#{{ r.id }} · {{ r.source }} · {{ r.reason }} · начат {{ r.started_at }}</p>
+        <progress class="bar" value="{{ r.processed + r.failed }}" max="{{ r.planned or 1 }}"></progress>
+        <p class="mon__line">{{ r.processed + r.failed }} / {{ r.planned }} · ошибок {{ r.failed }}</p>
+      {% else %}
+        <p class="empty">Обход не идёт.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">Сегодня</h2>
+    <ul id="today" class="stats">
+      {% for key, label in [("runs","обходов"), ("games","игр"), ("summaries","резюме"),
+                            ("llm_calls","вызовов LLM"), ("errors","ошибок")] %}
+        <li class="stat"><span class="stat__num" data-k="{{ key }}">{{ state.today[key] }}</span>
+          <span class="stat__label">{{ label }}</span></li>
+      {% endfor %}
+      <li class="stat"><span class="stat__num" data-k="llm_cost">{{ "%.4f"|format(state.today.llm_cost) }}</span>
+        <span class="stat__label">$ на LLM</span></li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">Последние обходы</h2>
+    <table class="table">
+      <thead><tr>
+        <th scope="col">#</th><th scope="col">Начат</th><th scope="col">Источник</th>
+        <th scope="col">Повод</th><th scope="col">Статус</th><th scope="col">Игр</th>
+      </tr></thead>
+      <tbody>
+        {% for r in runs %}
+          <tr>
+            <th scope="row">{{ r.id }}</th>
+            <td>{{ r.started_at.strftime("%d.%m %H:%M") }}</td>
+            <td>{{ r.source }}</td>
+            <td>{{ r.reason }}</td>
+            <td><span class="pill pill--{{ r.status }}">{{ r.status }}</span></td>
+            <td>{{ r.processed }}/{{ r.planned }}{% if r.failed %} · {{ r.failed }} с ошибкой{% endif %}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="empty">Обходов ещё не было.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">Живой лог</h2>
+    <ol id="log" class="log" aria-live="polite">
+      {% for e in state.events | reverse %}
+        <li class="log__row log__row--{{ e.type }}">
+          <span class="log__at">{{ e.at[11:19] }}</span>
+          <span class="log__type">{{ e.type }}</span>
+          <span class="log__msg">{{ e.message or e.detail or "" }}</span>
+        </li>
+      {% else %}
+        <li class="empty">Пока пусто.</li>
+      {% endfor %}
+    </ol>
+  </section>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const conn = $("#conn"), log = $("#log"), runBtn = $("#run"), runMsg = $("#run-msg");
+  const MAX_ROWS = 200;
+
+  const setConn = (cls, text) => { conn.className = "conn conn--" + cls; conn.textContent = text; };
+
+  function renderState(s) {
+    for (const [name, w] of Object.entries(s.workers)) {
+      const li = document.querySelector(`[data-worker="${name}"]`);
+      if (!li) continue;
+      li.querySelector(".worker__dot").className = "worker__dot worker__dot--" + w.status;
+      li.querySelector(".worker__state").textContent = w.status + (w.detail ? " · " + w.detail : "");
+    }
+    for (const [k, v] of Object.entries(s.today)) {
+      const el = document.querySelector(`#today [data-k="${k}"]`);
+      if (el) el.textContent = k === "llm_cost" ? Number(v).toFixed(4) : v;
+    }
+    const box = $("#run-box"), r = s.run;
+    if (r) {
+      const done = r.processed + r.failed;
+      box.innerHTML = `<p class="mon__line">#${r.id} · ${r.source} · ${r.reason} · начат ${r.started_at}</p>
+        <progress class="bar" value="${done}" max="${r.planned || 1}"></progress>
+        <p class="mon__line">${done} / ${r.planned} · ошибок ${r.failed}</p>`;
+      runBtn.disabled = true;
+    } else {
+      box.innerHTML = '<p class="empty">Обход не идёт.</p>';
+      runBtn.disabled = false;
+    }
+  }
+
+  function addLog(e) {
+    if (log.querySelector(".empty")) log.innerHTML = "";
+    const li = document.createElement("li");
+    li.className = "log__row log__row--" + e.type;
+    li.innerHTML = `<span class="log__at"></span><span class="log__type"></span><span class="log__msg"></span>`;
+    li.children[0].textContent = (e.at || "").slice(11, 19);
+    li.children[1].textContent = e.type;
+    li.children[2].textContent = e.message || e.detail || "";
+    log.prepend(li);
+    while (log.children.length > MAX_ROWS) log.lastElementChild.remove();
+  }
+
+  // EventSource reconnects on its own; we only surface the state to the user.
+  let source;
+  function connect() {
+    source = new EventSource("/monitor/stream");
+    source.addEventListener("open", () => setConn("live", "в эфире"));
+    source.addEventListener("state", (m) => renderState(JSON.parse(m.data)));
+    source.addEventListener("log", (m) => addLog(JSON.parse(m.data)));
+    source.addEventListener("error", () => setConn("down", "переподключение…"));
+  }
+  connect();
+
+  runBtn.addEventListener("click", async () => {
+    runBtn.disabled = true;                       // no double-submit while we wait
+    runMsg.textContent = "";
+    try {
+      const res = await fetch("/monitor/run", { method: "POST" });
+      const body = await res.json();
+      runMsg.textContent = body.detail;
+      runMsg.className = "mon__msg " + (res.ok ? "mon__msg--ok" : "mon__msg--warn");
+      if (!res.ok) runBtn.disabled = false;
+    } catch (err) {
+      runMsg.textContent = "не удалось отправить запрос: " + err;
+      runMsg.className = "mon__msg mon__msg--warn";
+      runBtn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -270,3 +270,87 @@ img { display: block; max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+/* ----------------------------------------------------------------- monitor */
+
+.nav { display: flex; align-items: center; gap: 0.4rem; }
+.nav__link {
+  display: inline-flex; align-items: center; min-height: 40px; padding: 0 0.8rem;
+  border-radius: 8px; text-decoration: none; color: var(--muted);
+  transition: color 200ms, background-color 200ms;
+}
+.nav__link:hover { color: var(--text); background: var(--surface-2); }
+
+.mon__head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: var(--gap); margin-bottom: 0.5rem;
+}
+.mon__title { margin: 0; font-size: 1.6rem; }
+.mon__actions { display: flex; align-items: center; gap: 0.75rem; }
+.mon__msg { margin: 0 0 0.5rem; min-height: 1.4em; font-size: 0.9rem; }
+.mon__msg--ok { color: var(--good); }
+.mon__msg--warn { color: var(--mixed); }
+.mon__line { margin: 0.35rem 0; color: var(--muted); font-size: 0.9rem; }
+
+.conn { font-size: 0.8rem; color: var(--muted); display: inline-flex; align-items: center; gap: 0.4rem; }
+.conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--tbd); }
+.conn--live::before { background: var(--good); }
+.conn--down::before { background: var(--bad); }
+
+.workers { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.worker {
+  display: flex; align-items: center; gap: 0.75rem;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 0.85rem 1rem;
+}
+.worker__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tbd); flex: none; }
+.worker__dot--busy { background: var(--good); }
+.worker__dot--idle { background: var(--accent); }
+.worker__dot--off { background: var(--tbd); }
+.worker__name { margin: 0; font-weight: 600; }
+.worker__state { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.82rem; }
+
+.bar { width: 100%; max-width: 520px; height: 10px; display: block; }
+.bar::-webkit-progress-bar { background: var(--surface-2); border-radius: 999px; }
+.bar::-webkit-progress-value { background: var(--good); border-radius: 999px; }
+.bar::-moz-progress-bar { background: var(--good); border-radius: 999px; }
+
+.stats { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.stat {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 0.8rem 1rem;
+}
+.stat__num { display: block; font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat__label { color: var(--muted); font-size: 0.8rem; }
+
+.pill {
+  display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px;
+  font-size: 0.75rem; background: var(--surface-2); color: var(--muted);
+}
+.pill--ok { background: rgb(88 195 34 / 0.18); color: var(--good); }
+.pill--running { background: rgb(139 92 246 / 0.2); color: #c4b5fd; }
+.pill--partial { background: rgb(242 201 76 / 0.18); color: var(--mixed); }
+.pill--failed { background: rgb(239 68 68 / 0.18); color: #fca5a5; }
+
+.log {
+  list-style: none; margin: 0; padding: 0.5rem 0.75rem;
+  max-height: 420px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  font-size: 0.84rem; font-variant-numeric: tabular-nums;
+}
+.log__row { display: grid; grid-template-columns: 4.5rem 8.5rem 1fr; gap: 0.5rem;
+  padding: 0.25rem 0; border-bottom: 1px solid rgb(42 47 61 / 0.5); }
+.log__row:last-child { border-bottom: 0; }
+.log__at { color: var(--muted); }
+.log__type { color: var(--accent); }
+.log__msg { color: #cdd3df; overflow-wrap: anywhere; }
+.log__row--error .log__type, .log__row--llm_error .log__type, .log__row--game_failed .log__type { color: var(--bad); }
+.log__row--run_start .log__type, .log__row--run_end .log__type { color: var(--good); }
+
+@media (max-width: 560px) {
+  .log__row { grid-template-columns: 4.5rem 1fr; }
+  .log__type { grid-column: 2; }
+  .log__msg { grid-column: 1 / -1; }
+}
