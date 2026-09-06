@@ -30,9 +30,20 @@ class Settings(BaseSettings):
     request_retries: int = 3
     request_delay: float = 1.0  # minimum seconds between two outgoing requests
 
-    # --- LLM (used in a later step) ---
+    # --- crawler ---
+    tz: str = "Europe/Moscow"
+    crawl_interval_minutes: int = 60
+    crawl_batch_size: int = 20
+    reviews_per_kind: int = 40
+
+    # --- LLM (OpenRouter) ---
     openrouter_api_key: str = ""
-    openrouter_model: str = "openai/gpt-4o-mini"
+    openrouter_url: str = "https://openrouter.ai/api/v1/chat/completions"
+    openrouter_model: str = "deepseek/deepseek-v4-flash"
+    openrouter_fallback_model: str = "google/gemini-2.5-flash-lite"
+    llm_timeout: float = 60.0
+    site_url: str = "https://github.com/"  # sent as HTTP-Referer to OpenRouter
+    site_title: str = "metacritic-ai-watch"
 
     @property
     def data_dir(self) -> Path:
