@@ -267,6 +267,14 @@ img { display: block; max-width: 100%; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
 
+/* Phones: one card per row. At 375px the content box is 343px, which would otherwise
+   still fit two 150px columns. */
+@media (max-width: 430px) {
+  .grid, .grid--tight { grid-template-columns: 1fr; }
+  .cover { aspect-ratio: 16 / 10; }
+  .card__link { display: block; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

@@ -33,6 +33,8 @@ class Game(Base):
     slug: Mapped[str] = mapped_column(String(200), unique=True, index=True)
     title: Mapped[str] = mapped_column(String(300))
     cover_url: Mapped[str | None] = mapped_column(String(500))
+    # File name inside data/covers/, set once the crawl has copied the image locally.
+    cover_path: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     developer: Mapped[str | None] = mapped_column(String(200))
     publisher: Mapped[str | None] = mapped_column(String(200))

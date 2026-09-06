@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from app import monitor, similar
+from app import covers, monitor, similar
 from app.config import settings
 from app.db import SessionLocal, init_db
 from app.llm import summarize_reviews
@@ -166,6 +166,7 @@ def process_game(session, slug: str) -> tuple[str, str | None]:
                  slug=slug, message=f"загружаю карточку {slug}")
     data = metacritic.fetch_game(slug, client=client)
     game = _upsert_game(session, data)
+    game.cover_path = covers.cache_cover(slug, data.cover_url, client)
     # SQLite takes a single write lock. Commit before every slow network call, or the
     # LLM client's own connection cannot write its `llm_calls` row and times out.
     session.commit()
@@ -308,16 +309,42 @@ def _run_crawl(reason: str, limit: int, now: datetime | None) -> CrawlRun:
         return run
 
 
+def refresh_covers() -> int:
+    """Re-fetch every cover already referenced in the database."""
+    init_db()
+    client = default_client()
+    done = failed = 0
+    with SessionLocal() as session:
+        for game in session.scalars(select(Game).order_by(Game.id)).all():
+            name = covers.cache_cover(game.slug, game.cover_url, client, force=True)
+            if name:
+                game.cover_path = name
+                done += 1
+            else:
+                failed += 1
+                log.warning("no cover for %s (%s)", game.slug, game.cover_url)
+            session.commit()
+    print(f"covers refreshed: {done} ok, {failed} failed -> {covers.covers_dir()}")
+    return 0 if not failed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run one Metacritic crawl.")
     parser.add_argument("--once", action="store_true", help="run a single crawl and exit")
     parser.add_argument("--limit", type=int, default=None, help="max games this run")
     parser.add_argument("--reason", default="manual")
+    parser.add_argument(
+        "--refresh-covers",
+        action="store_true",
+        help="re-download the cover of every game already in the database, then exit",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    if args.refresh_covers:
+        return refresh_covers()
     if not args.once:
         parser.error("only --once is supported; use app.scheduler for the hourly loop")
 

@@ -11,13 +11,13 @@ from contextlib import asynccontextmanager
 from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app import monitor, similar
+from app import covers, monitor, similar
 from app.config import BASE_DIR, settings
 from app.crawler import is_running, run_crawl
 from app.db import SessionLocal, init_db
@@ -121,7 +121,8 @@ def game_to_dict(game: Game, full: bool = False) -> dict:
     data = {
         "slug": game.slug,
         "title": game.title,
-        "cover_url": game.cover_url,
+        "cover_url": f"/covers/{game.cover_path}" if game.cover_path else game.cover_url,
+        "cover_source_url": game.cover_url,
         "developer": game.developer,
         "release_date": game.release_date,
         "best_metascore": game.best_metascore,
@@ -189,6 +190,15 @@ def index(
     # HTMX asks for the results only; a normal visit gets the whole page.
     name = "_results.html" if request.headers.get("HX-Request") else "index.html"
     return templates.TemplateResponse(request, name, context)
+
+
+@app.get("/covers/{name}")
+def cover(name: str):
+    """Serve a cached cover. Only `<slug>.<ext>` names resolve, so `..` cannot escape."""
+    path = covers.path_for(name)
+    if path is None:
+        raise HTTPException(status_code=404, detail="cover not found")
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/game/{slug}", response_class=HTMLResponse)
