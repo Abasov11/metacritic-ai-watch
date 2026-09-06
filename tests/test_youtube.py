@@ -9,6 +9,46 @@ from sqlalchemy.orm import sessionmaker
 from app import crawler, youtube
 from app.models import Base, Game, LetsPlay
 
+#: The three false matches seen in production, reduced to their essentials.
+PRODUCTION_FALSE_MATCHES = [
+    (
+        "I Am Angel",
+        {
+            "id": "eury",
+            "duration": 3000,
+            "view_count": 51_435_662,
+            "channel": "Eurythmics",
+            "title": "Eurythmics, Annie Lennox, Dave Stewart - There Must Be An Angel "
+            "(Playing With My Heart) (Remastered)",
+            "description": "Eurythmics - There Must Be An Angel (Official Video) "
+            "Preorder Eurythmics vinyl. Part 1 of the remasters.",
+        },
+    ),
+    (
+        "Flip Off",
+        {
+            "id": "uno",
+            "duration": 1800,
+            "view_count": 5_091_462,
+            "channel": "SMii7Y",
+            "title": "PROLOGUE + FLIP OFF - Grand Theft Auto V ( GTA 5 ) w/ Nova Ep. 2",
+            "description": "In-game of course. Leave a like and Subscribe if you enjoyed!",
+        },
+    ),
+    (
+        "Tilefall",
+        {
+            "id": "stumble",
+            "duration": 600,
+            "view_count": 21_249,
+            "channel": "Stumble Guys",
+            "title": "The Tilefall Trick You NEED to Master | Stumble Guys – Become a Pro",
+            "description": "Ready to level up? Watch the first Stumble Guys episode 1 and "
+            "learn the moves top players don't want you to know.",
+        },
+    ),
+]
+
 SEARCH_RESULTS = [
     {
         "id": "trailer1",
@@ -401,3 +441,140 @@ def test_a_crashing_stage_does_not_break_the_crawl(db, monkeypatch):
     assert "yt-dlp exploded" in error
     with db() as session:
         assert session.scalar(select(LetsPlay)).transcript_source == "none"
+
+
+# --------------------------------------------------- short titles, real regressions
+
+
+@pytest.mark.parametrize("game,entry", PRODUCTION_FALSE_MATCHES, ids=lambda v: str(v)[:16])
+def test_short_titles_do_not_swallow_unrelated_videos(game, entry):
+    # All three of these were actually picked in production before the filter was
+    # tightened: a music video, a GTA clip and a Stumble Guys tutorial.
+    assert youtube.is_letsplay(entry, game) is False
+
+
+def test_a_short_title_needs_the_phrase_in_title_and_description():
+    base = {"id": "x", "duration": 2000, "view_count": 100}
+    only_title = base | {"title": "Tilefall gameplay part 1", "description": "fun game"}
+    both = base | {
+        "title": "Tilefall gameplay part 1",
+        "description": "Playing Tilefall for the first time",
+    }
+    assert youtube.is_letsplay(only_title, "Tilefall") is False
+    assert youtube.is_letsplay(both, "Tilefall") is True
+
+
+def test_a_short_title_must_match_as_a_phrase_not_as_scattered_words():
+    entry = {
+        "id": "x",
+        "duration": 2000,
+        "view_count": 100,
+        "title": "Flip a coin, then head off — gameplay part 1",
+        "description": "we flip the switch and head off, gameplay",
+    }
+    assert youtube.is_letsplay(entry, "Flip Off") is False
+
+
+def test_long_titles_still_match_on_word_overlap():
+    # The stricter phrase rule applies to short names only.
+    entry = {
+        "id": "x",
+        "duration": 2000,
+        "view_count": 100,
+        "title": "Silksong Hollow Knight — part 1",
+        "description": "blind run",
+    }
+    assert youtube.is_letsplay(entry, "Hollow Knight: Silksong") is True
+
+
+# ------------------------------------------------------------ the playthrough marker
+
+
+def test_a_video_without_any_playthrough_marker_is_rejected():
+    entry = {
+        "id": "x",
+        "duration": 3600,
+        "view_count": 10**7,
+        "title": "Hollow Knight Silksong — the complete lore explained",
+        "description": "Everything about the story of Hollow Knight Silksong",
+    }
+    assert youtube.is_letsplay(entry, "Hollow Knight: Silksong") is False
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "let's play",
+        "lets play",
+        "gameplay",
+        "walkthrough",
+        "playthrough",
+        "first look",
+        "for the first time",
+        "part 1",
+        "прохождение",
+        "летсплей",
+        "геймплей",
+        "blind run",
+        "no commentary",
+    ],
+)
+def test_every_documented_marker_is_accepted(marker):
+    entry = {
+        "id": "x",
+        "duration": 2000,
+        "view_count": 10,
+        "title": f"Hollow Knight Silksong {marker}",
+        "description": "",
+    }
+    assert youtube.is_letsplay(entry, "Hollow Knight: Silksong") is True
+
+
+def test_the_marker_may_come_from_tags():
+    entry = {
+        "id": "x",
+        "duration": 2000,
+        "view_count": 10,
+        "title": "Hollow Knight Silksong episode one",
+        "description": "",
+        "tags": ["walkthrough", "indie"],
+    }
+    assert youtube.is_letsplay(entry, "Hollow Knight: Silksong") is True
+
+
+# ------------------------------------------------------------ store link tiebreak
+
+
+def test_a_store_link_wins_over_raw_view_count(monkeypatch):
+    popular = {
+        "id": "big",
+        "duration": 3600,
+        "view_count": 5_000_000,
+        "channel": "Big",
+        "title": "Hollow Knight Silksong gameplay",
+        "description": "no link here",
+    }
+    linked = {
+        "id": "small",
+        "duration": 3600,
+        "view_count": 900,
+        "channel": "Small",
+        "title": "Hollow Knight Silksong walkthrough",
+        "description": "Game: https://store.steampowered.com/app/1030300/",
+    }
+    monkeypatch.setattr(youtube, "_ytsearch", lambda q: [popular, linked])
+    assert youtube.search_letsplay("Hollow Knight: Silksong").video_id == "small"
+
+
+def test_a_store_link_cannot_admit_a_video_that_fails_the_filters(monkeypatch):
+    # Rule (в): the link breaks ties, it never substitutes for the name/marker checks.
+    junk = {
+        "id": "junk",
+        "duration": 3600,
+        "view_count": 10**7,
+        "title": "Eurythmics - There Must Be An Angel",
+        "description": "https://store.steampowered.com/app/1/ gameplay part 1",
+    }
+    monkeypatch.setattr(youtube, "_ytsearch", lambda q: [junk])
+    assert youtube.has_store_link(junk) is True
+    assert youtube.search_letsplay("I Am Angel") is None

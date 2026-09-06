@@ -15,10 +15,12 @@ from collections import deque
 from datetime import UTC, datetime
 from typing import Any
 
+from app.config import settings
+
 MAX_EVENTS = 200
 
-#: Workers shown on the dashboard. `youtube` is a placeholder for the optional
-#: let's-play feature, which is not implemented — it reports `off`, never `busy`.
+#: Workers shown on the dashboard. `youtube` reports `off` only while the let's-play
+#: stage is switched off; otherwise it idles like the rest.
 WORKERS = ("crawler", "llm", "youtube")
 
 _lock = threading.Lock()
@@ -41,9 +43,10 @@ def reset() -> None:
         _current_run = None
         _workers.clear()
         for name in WORKERS:
+            off = name == "youtube" and not settings.youtube_enabled
             _workers[name] = {
-                "status": "off" if name == "youtube" else "idle",
-                "detail": "не подключён" if name == "youtube" else None,
+                "status": "off" if off else "idle",
+                "detail": "выключено настройкой" if off else None,
                 "since": _now(),
             }
 

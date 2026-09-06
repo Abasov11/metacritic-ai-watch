@@ -35,6 +35,28 @@ NOT_A_LETSPLAY = re.compile(
 )
 _WORD_RE = re.compile(r"[a-zа-яё0-9]+", re.IGNORECASE)
 
+#: A playthrough says so somewhere. Without one of these a match is almost always a
+#: music video, a meme clip or a video about a different game that merely shares a word.
+LETSPLAY_MARKER = re.compile(
+    r"(let'?s\s*play|letsplay|game\s*play|gameplay|walk\s*through|walkthrough|"
+    r"play\s*through|playthrough|first\s+(?:look|time|playthrough)|blind\s+run|"
+    r"no\s+commentary|"
+    r"part\s*\d+|ep(?:isode)?\.?\s*\d+|прохождени\w*|летсплей|геймплей)",
+    re.IGNORECASE,
+)
+
+#: A store link for the game is a strong hint that the video really is about it.
+STORE_LINK = re.compile(
+    r"(store\.steampowered\.com|steamcommunity\.com/app|itch\.io|"
+    r"(?:store|www)\.epicgames\.com|gog\.com/game|microsoft\.com/[^\s]*p/|"
+    r"store\.playstation\.com|nintendo\.com/[^\s]*store)",
+    re.IGNORECASE,
+)
+
+#: Titles of one or two meaningful words ("Flip Off", "Tilefall") match far too much,
+#: so for those we insist on the whole phrase rather than a share of the words.
+SHORT_TITLE_WORDS = 2
+
 
 class YouTubeError(RuntimeError):
     pass
@@ -61,19 +83,54 @@ def _title_words(title: str) -> set[str]:
     return {w.lower() for w in _WORD_RE.findall(title) if len(w) > 2}
 
 
+def _normalise(text: str) -> str:
+    """Lowercase words joined by single spaces, so punctuation stops mattering."""
+    return " ".join(_WORD_RE.findall(text.lower()))
+
+
+def mentions_game(entry: dict, game_title: str) -> bool:
+    """Whether the entry is plausibly about this game at all.
+
+    Long titles are matched by word overlap, which tolerates subtitles and episode
+    numbering. Short ones ("Flip Off") would match almost anything that way, so they
+    have to appear as the exact phrase.
+    """
+    wanted = _title_words(game_title)
+    if not wanted:
+        return False
+    if len(wanted) <= SHORT_TITLE_WORDS:
+        # A one- or two-word name is often ordinary English ("Flip Off") or a chapter
+        # in someone else's game ("Kupala Night" in Cabernet), so the phrase has to
+        # show up in the title *and* the description before we believe it.
+        phrase = _normalise(game_title)
+        if not phrase:
+            return False
+        return phrase in _normalise(entry.get("title") or "") and phrase in _normalise(
+            entry.get("description") or ""
+        )
+
+    # Most of the title has to show up; sequels and subtitles get dropped otherwise.
+    haystack = f"{entry.get('title') or ''} {entry.get('description') or ''}"
+    return len(wanted & _title_words(haystack)) / len(wanted) >= 0.6
+
+
 def is_letsplay(entry: dict, game_title: str) -> bool:
-    """Long enough, about this game, and not a trailer or a review."""
+    """Long enough, demonstrably a playthrough, and demonstrably about this game."""
     if (entry.get("duration") or 0) < settings.youtube_min_duration:
         return False
     title = entry.get("title") or ""
     if NOT_A_LETSPLAY.search(title):
         return False
-    wanted = _title_words(game_title)
-    if not wanted:
+    if not mentions_game(entry, game_title):
         return False
-    haystack = _title_words(f"{title} {entry.get('description') or ''}")
-    # Most of the title has to show up; sequels and subtitles get dropped otherwise.
-    return len(wanted & haystack) / len(wanted) >= 0.6
+    # Say-so requirement: a real playthrough advertises itself as one somewhere.
+    haystack = f"{title} {entry.get('description') or ''} {' '.join(entry.get('tags') or [])}"
+    return bool(LETSPLAY_MARKER.search(haystack))
+
+
+def has_store_link(entry: dict) -> bool:
+    """A store link for the game — used to break ties, never to admit a candidate."""
+    return bool(STORE_LINK.search(entry.get("description") or ""))
 
 
 def _ytsearch(query: str) -> list[dict]:
@@ -105,7 +162,9 @@ def search_letsplay(game_title: str) -> Video | None:
     candidates = [e for e in entries if is_letsplay(e, game_title)]
     if not candidates:
         return None
-    best = max(candidates, key=lambda e: e.get("view_count") or 0)
+    # Views decide, but a store link outranks raw popularity: a smaller channel that
+    # links the game's Steam page is more certainly about this game.
+    best = max(candidates, key=lambda e: (has_store_link(e), e.get("view_count") or 0))
     return Video(
         video_id=best["id"],
         url=best.get("url") or f"https://www.youtube.com/watch?v={best['id']}",

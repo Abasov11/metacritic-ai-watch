@@ -77,9 +77,22 @@ def test_unknown_worker_names_are_ignored():
     assert set(monitor.snapshot(with_events=False)["workers"]) == set(monitor.WORKERS)
 
 
-def test_youtube_worker_is_reported_as_not_wired_up():
+def test_youtube_worker_idles_when_the_stage_is_enabled(monkeypatch):
+    monkeypatch.setattr(monitor.settings, "youtube_enabled", True)
+    monitor.reset()
+    youtube = monitor.snapshot(with_events=False)["workers"]["youtube"]
+    assert youtube["status"] == "idle"
+    assert youtube["detail"] is None
+
+
+def test_youtube_worker_is_off_only_when_the_stage_is_disabled(monkeypatch):
+    monkeypatch.setattr(monitor.settings, "youtube_enabled", False)
+    monitor.reset()
     youtube = monitor.snapshot(with_events=False)["workers"]["youtube"]
     assert youtube["status"] == "off"
+    assert youtube["detail"] == "выключено настройкой"
+    # The other workers are unaffected by the setting.
+    assert monitor.snapshot(with_events=False)["workers"]["crawler"]["status"] == "idle"
 
 
 def test_run_lifecycle_tracks_progress():
