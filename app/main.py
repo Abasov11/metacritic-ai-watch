@@ -62,7 +62,7 @@ def close_orphaned_runs() -> int:
     with SessionLocal() as session:
         orphans = session.scalars(select(CrawlRun).where(CrawlRun.status == "running")).all()
         for run in orphans:
-            run.status = "interrupted"
+            run.status = "aborted"
             run.finished_at = run.finished_at or utcnow()
             run.error = (run.error or "") + " прерван: процесс завершился во время обхода"
         session.commit()

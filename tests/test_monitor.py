@@ -294,8 +294,26 @@ def test_a_run_left_running_by_a_dead_process_is_closed_at_startup(monkeypatch, 
     assert main.close_orphaned_runs() == 1
     with factory() as session:
         run = session.scalar(select(CrawlRun))
-        assert run.status == "interrupted"
+        assert run.status == "aborted"
         assert run.finished_at is not None
         assert "процесс завершился" in run.error
     # Nothing left to close on the next start.
     assert main.close_orphaned_runs() == 0
+
+
+def test_aborted_runs_do_not_count_as_running_anywhere(client):
+    with main.SessionLocal() as session:
+        session.add(
+            CrawlRun(
+                source="browse:9", reason="scheduled", status="running", planned=20, processed=4
+            )
+        )
+        session.commit()
+    main.close_orphaned_runs()
+
+    # The dashboard shows it with its own pill, and it is not "in progress".
+    body = client.get("/monitor").text
+    assert "pill--aborted" in body
+    assert "browse:9" in body
+    assert client.get("/healthz").json()["crawl_running"] is False
+    assert monitor.snapshot(with_events=False)["run"] is None

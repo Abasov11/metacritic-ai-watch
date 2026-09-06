@@ -56,6 +56,8 @@ img { display: block; max-width: 100%; }
 .brand {
   display: inline-flex; align-items: center; gap: 0.6rem;
   font-weight: 700; font-size: 1.05rem; letter-spacing: 0.01em; text-decoration: none;
+  white-space: nowrap;  /* "Metacritic AI Watch" must never break across lines */
+  min-width: 0;
 }
 .brand__mark {
   width: 12px; height: 22px; border-radius: 3px;
@@ -262,7 +264,11 @@ img { display: block; max-width: 100%; }
 /* HTMX: dim the results while a request is in flight, without shifting layout. */
 #results.htmx-request { opacity: 0.55; transition: opacity 150ms; }
 
+/* Narrow screens: the nav keeps its full width, the brand gives up its suffix. */
 @media (max-width: 560px) {
+  .brand__dim { display: none; }
+  .nav__link { padding: 0 0.55rem; }
+
   .cover--lg { width: 100%; max-width: 220px; margin-inline: auto; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
@@ -284,7 +290,7 @@ img { display: block; max-width: 100%; }
 
 /* ----------------------------------------------------------------- monitor */
 
-.nav { display: flex; align-items: center; gap: 0.4rem; }
+.nav { display: flex; align-items: center; gap: 0.4rem; flex: none; }
 .nav__link {
   display: inline-flex; align-items: center; min-height: 40px; padding: 0 0.8rem;
   border-radius: 8px; text-decoration: none; color: var(--muted);
@@ -344,7 +350,7 @@ img { display: block; max-width: 100%; }
 .pill--running { background: rgb(139 92 246 / 0.2); color: #c4b5fd; }
 .pill--partial { background: rgb(242 201 76 / 0.18); color: var(--mixed); }
 .pill--failed { background: rgb(239 68 68 / 0.18); color: #fca5a5; }
-.pill--interrupted { background: rgb(242 201 76 / 0.14); color: var(--mixed); }
+.pill--aborted { background: rgb(249 115 22 / 0.18); color: #fdba74; }
 
 .log {
   list-style: none; margin: 0; padding: 0.5rem 0.75rem;
