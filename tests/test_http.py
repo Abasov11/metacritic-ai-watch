@@ -69,9 +69,30 @@ def test_client_errors_are_not_retried():
         calls.append(request)
         return httpx.Response(404)
 
-    with pytest.raises(httpx.HTTPStatusError):
+    # Not retried, but still a ScrapeError: callers only ever catch one type.
+    with pytest.raises(ScrapeError, match="404"):
         _client_with(handler).get("https://example.test/")
     assert len(calls) == 1
+
+
+def test_credentials_in_a_url_never_reach_the_error_message():
+    def handler(request):
+        return httpx.Response(403)
+
+    with pytest.raises(ScrapeError) as caught:
+        _client_with(handler).get("https://example.test/x?apiKey=SECRET123&offset=0")
+    message = str(caught.value)
+    assert "SECRET123" not in message
+    assert "apiKey=<redacted>" in message
+    assert "offset=0" in message  # harmless parameters survive
+
+
+def test_scrub_redacts_common_credential_parameters():
+    from app.scraper.http import scrub
+
+    assert scrub("https://a/b?token=xyz&q=1") == "https://a/b?token=<redacted>&q=1"
+    assert scrub("https://a/b?ACCESS_TOKEN=xyz") == "https://a/b?ACCESS_TOKEN=<redacted>"
+    assert scrub("nothing to hide") == "nothing to hide"
 
 
 def test_min_delay_spaces_out_requests():

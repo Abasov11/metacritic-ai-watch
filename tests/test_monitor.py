@@ -32,6 +32,8 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(app_db, "SessionLocal", factory)
     monkeypatch.setattr(main, "init_db", lambda: None)
     monkeypatch.setattr(main, "create_scheduler", lambda: _NullScheduler())
+    # The manual-run rate limit is module state; keep tests independent of each other.
+    monkeypatch.setattr(main, "_last_manual_run", 0.0)
     with factory() as session:
         session.add(
             CrawlRun(source="new_releases", reason="scheduled", status="ok", planned=3, processed=3)

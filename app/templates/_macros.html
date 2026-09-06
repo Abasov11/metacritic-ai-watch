@@ -16,7 +16,7 @@
 
 {# Prefer our own cached copy; metacritic.com answers 403 for hotlinked covers. #}
 {% macro cover(game, sizes) %}
-  {% set src = "/covers/" ~ game.cover_path if game.cover_path else game.cover_url %}
+  {% set src = "/covers/" ~ game.cover_path if game.cover_path else safe_url(game.cover_url) %}
   {% if src %}
     <img class="cover__img" src="{{ src }}" alt="Обложка: {{ game.title }}"
          loading="lazy" sizes="{{ sizes }}">

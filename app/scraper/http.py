@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import threading
 import time
 
@@ -19,6 +20,18 @@ log = logging.getLogger(__name__)
 
 #: Statuses worth retrying: transient server errors and rate limiting.
 RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+#: Error text ends up in logs and on the public monitor page, so credentials that
+#: travel in a query string never make it into a message.
+_SECRET_PARAM_RE = re.compile(
+    r"([?&](?:api[-_]?key|key|token|secret|password|access[-_]?token)=)[^&\s'\"]+",
+    re.IGNORECASE,
+)
+
+
+def scrub(value: object) -> str:
+    """Redact credentials embedded in URLs before the text goes anywhere."""
+    return _SECRET_PARAM_RE.sub(r"\1<redacted>", str(value))
 
 
 class ScrapeError(RuntimeError):
@@ -68,17 +81,25 @@ class PoliteClient:
                 response = self._client.get(url, **kwargs)
             except httpx.HTTPError as exc:
                 last_error = exc
-                log.warning("GET %s failed (attempt %d/%d): %s", url, attempt, self.retries, exc)
+                log.warning(
+                    "GET %s failed (attempt %d/%d): %s",
+                    scrub(url),
+                    attempt,
+                    self.retries,
+                    scrub(exc),
+                )
             else:
                 if response.status_code not in RETRY_STATUSES:
-                    response.raise_for_status()
+                    if response.is_error:
+                        # Not worth retrying, but callers still expect one error type.
+                        raise ScrapeError(f"GET {scrub(url)} returned HTTP {response.status_code}")
                     return response
                 last_error = httpx.HTTPStatusError(
                     f"HTTP {response.status_code}", request=response.request, response=response
                 )
                 log.warning(
                     "GET %s returned %d (attempt %d/%d)",
-                    url,
+                    scrub(url),
                     response.status_code,
                     attempt,
                     self.retries,
@@ -86,7 +107,9 @@ class PoliteClient:
             if attempt < self.retries:
                 # Exponential backoff with jitter, so parallel workers do not sync up.
                 time.sleep(self.backoff_base * 2 ** (attempt - 1) + random.uniform(0, 0.5))
-        raise ScrapeError(f"GET {url} failed after {self.retries} attempts: {last_error}")
+        raise ScrapeError(
+            f"GET {scrub(url)} failed after {self.retries} attempts: {scrub(last_error)}"
+        )
 
     def get_text(self, url: str, **kwargs) -> str:
         return self.get(url, **kwargs).text

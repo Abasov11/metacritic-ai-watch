@@ -16,13 +16,15 @@
           {% if game.genres %}<dt>Жанры</dt><dd>{{ game.genres | join(", ") }}</dd>{% endif %}
         </dl>
         <p class="game__links">
-          {% if game.metacritic_url %}
-            <a class="btn btn--ghost" href="{{ game.metacritic_url }}" rel="noopener" target="_blank">
+          {% if safe_url(game.metacritic_url) %}
+            <a class="btn btn--ghost" href="{{ safe_url(game.metacritic_url) }}"
+               rel="noopener noreferrer" target="_blank">
               Страница на Metacritic
             </a>
           {% endif %}
-          {% if game.video_url and not youtube_embed(game.video_url) %}
-            <a class="btn btn--ghost" href="{{ game.video_url }}" rel="noopener" target="_blank">
+          {% if safe_url(game.video_url) and not youtube_embed(game.video_url) %}
+            <a class="btn btn--ghost" href="{{ safe_url(game.video_url) }}"
+               rel="noopener noreferrer" target="_blank">
               Трейлер
             </a>
           {% endif %}
@@ -101,7 +103,8 @@
       {% set lp = game.letsplay %}
       {% if lp and lp.video_id %}
         <div class="letsplay">
-          <a class="letsplay__thumb" href="{{ lp.url }}" rel="noopener" target="_blank"
+          <a class="letsplay__thumb" href="{{ safe_url(lp.url) or "#" }}"
+             rel="noopener noreferrer" target="_blank"
              aria-label="Открыть на YouTube: {{ lp.title }}">
             <img src="https://i.ytimg.com/vi/{{ lp.video_id }}/mqdefault.jpg"
                  alt="Превью ролика: {{ lp.title }}" loading="lazy" width="320" height="180">
@@ -109,7 +112,8 @@
           </a>
           <div class="letsplay__body">
             <h3 class="letsplay__title">
-              <a href="{{ lp.url }}" rel="noopener" target="_blank">{{ lp.title }}</a>
+              <a href="{{ safe_url(lp.url) or "#" }}" rel="noopener noreferrer"
+                 target="_blank">{{ lp.title }}</a>
             </h3>
             <p class="letsplay__meta">
               {{ lp.channel or "канал неизвестен" }}

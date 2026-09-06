@@ -34,6 +34,9 @@ NEW_RELEASES_COUNT = 20
 
 _JSON_LD_RE = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.DOTALL)
 _SLUG_RE = re.compile(r"^/game/([a-z0-9\-]+)/?$")
+#: A slug becomes a URL path segment and a cache file name, so it is checked once here
+#: rather than trusted at every use site.
+_VALID_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,199}$")
 
 
 # --------------------------------------------------------------------------- models
@@ -138,7 +141,11 @@ def parse_new_releases(html: str, limit: int = NEW_RELEASES_COUNT) -> list[str]:
     except ScrapeError:
         data = None
     if data and isinstance(data.get("items"), list):
-        slugs = [item["slug"] for item in data["items"] if item.get("slug")]
+        slugs = [
+            item["slug"]
+            for item in data["items"]
+            if isinstance(item.get("slug"), str) and _VALID_SLUG_RE.match(item["slug"])
+        ]
         if slugs:
             return slugs[:limit]
 

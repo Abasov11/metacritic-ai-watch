@@ -180,3 +180,22 @@ def test_tbd_scores_are_not_reported_as_zero():
     assert _score({"score": None, "reviewCount": None, "sentiment": None}) is None
     assert _score({"score": 8.9, "reviewCount": 7391, "sentiment": "Generally favorable"}) == 8.9
     assert _score(None) is None
+
+
+def test_new_releases_drops_slugs_that_are_not_slug_shaped(monkeypatch):
+    # The slug becomes a URL segment and a cover file name, so it is validated at parse
+    # time rather than trusted downstream.
+    from app.scraper import metacritic
+
+    payload = {
+        "items": [
+            {"slug": "good-game"},
+            {"slug": "../../etc/passwd"},
+            {"slug": "Has Spaces"},
+            {"slug": None},
+            {"slug": "ok2"},
+        ]
+    }
+    monkeypatch.setattr(metacritic, "_page_components", lambda html: [])
+    monkeypatch.setattr(metacritic, "_component", lambda comps, name: payload)
+    assert metacritic.parse_new_releases("<html></html>") == ["good-game", "ok2"]

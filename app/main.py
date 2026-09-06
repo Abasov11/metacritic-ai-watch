@@ -7,8 +7,9 @@ import json
 import logging
 import re
 import threading
+import time
 from contextlib import asynccontextmanager
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
@@ -29,6 +30,30 @@ log = logging.getLogger(__name__)
 PER_PAGE = 24
 REVIEWS_SHOWN = 10
 RECENT_RUNS = 10
+MAX_QUERY_CHARS = 100
+MAX_PLATFORM_FILTERS = 40
+MAX_PAGE = 10_000
+#: Manual crawls cost money, so the button cannot be held down.
+MANUAL_RUN_MIN_INTERVAL = 60.0
+
+#: The app serves its own JS and CSS, embeds YouTube, and loads video thumbnails from
+#: i.ytimg.com. Nothing else is allowed, and nothing may frame us.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "img-src 'self' https://i.ytimg.com data:; "
+        "frame-src https://www.youtube.com; "
+        "script-src 'self'; "
+        "style-src 'self'; "
+        "connect-src 'self'; "
+        "base-uri 'none'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'"
+    ),
+}
 SSE_POLL_SECONDS = 0.5
 SSE_HEARTBEAT_SECONDS = 15
 # Streams end on their own and the browser's EventSource reconnects. Bounding them
@@ -44,6 +69,22 @@ SORTS = {
 DEFAULT_SORT = "metascore_desc"
 
 _YOUTUBE_RE = re.compile(r"(?:youtube\.com/(?:watch\?v=|embed/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})")
+
+
+def safe_url(url: str | None) -> str | None:
+    """Render external links only when they are plain http(s).
+
+    Everything here comes from Metacritic or yt-dlp rather than from a user, so this is
+    a backstop: it keeps a `javascript:` or `data:` value from ever reaching an href.
+    """
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return url
+    if not parsed.scheme and url.startswith("/"):
+        return url  # our own /covers/... paths
+    return None
 
 
 def youtube_embed(url: str | None) -> str | None:
@@ -90,6 +131,19 @@ app = FastAPI(title="Metacritic AI Watch", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "app" / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "app" / "templates")
 templates.env.globals["youtube_embed"] = youtube_embed
+templates.env.globals["safe_url"] = safe_url
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    return response
+
+
+#: Wall-clock of the last accepted manual crawl (see MANUAL_RUN_MIN_INTERVAL).
+_last_manual_run = 0.0
 
 
 def get_session():
@@ -109,6 +163,8 @@ def query_games(
 ) -> tuple[list[Game], int]:
     """Filtered, sorted page of games plus the unpaginated total."""
     statement = select(Game)
+    q = (q or "")[:MAX_QUERY_CHARS]
+    platforms = (platforms or [])[:MAX_PLATFORM_FILTERS]
     if q.strip():
         needle = f"%{q.strip()}%"
         statement = statement.where(or_(Game.title.ilike(needle), Game.developer.ilike(needle)))
@@ -122,7 +178,7 @@ def query_games(
     statement = statement.order_by(
         column.is_(None), column.desc() if direction == "desc" else column.asc(), Game.id
     )
-    page = max(page, 1)
+    page = min(max(page, 1), MAX_PAGE)
     games = session.scalars(statement.limit(PER_PAGE).offset((page - 1) * PER_PAGE)).all()
     return list(games), total or 0
 
@@ -314,11 +370,38 @@ async def monitor_stream():
     )
 
 
+def is_same_origin(request: Request) -> bool:
+    """Reject cross-site POSTs. A tool with no Origin header (curl) is left alone."""
+    site = request.headers.get("sec-fetch-site")
+    if site is not None:
+        return site in ("same-origin", "none")
+    origin = request.headers.get("origin")
+    if origin is None:
+        return True
+    # Compare hosts, not full URLs: behind nginx the app never sees the public scheme.
+    return urlparse(origin).netloc == request.headers.get("host", "")
+
+
 @app.post("/monitor/run")
-def monitor_run():
-    """Force a crawl. 409 while one is already running."""
+def monitor_run(request: Request):
+    """Force a crawl. 403 cross-site, 429 too soon, 409 while one is already running."""
+    global _last_manual_run
+
+    if not is_same_origin(request):
+        return JSONResponse({"detail": "запрос с чужого источника"}, status_code=403)
     if is_running():
         return JSONResponse({"detail": "обход уже идёт"}, status_code=409)
+
+    waited = time.monotonic() - _last_manual_run
+    if waited < MANUAL_RUN_MIN_INTERVAL:
+        retry_after = int(MANUAL_RUN_MIN_INTERVAL - waited) + 1
+        return JSONResponse(
+            {"detail": f"слишком часто, попробуйте через {retry_after} с"},
+            status_code=429,
+            headers={"Retry-After": str(retry_after)},
+        )
+    _last_manual_run = time.monotonic()
+
     # The 409 above is advisory UX; a request that slips through the race still hits
     # the crawler's own lock and comes back as a `skipped` run.
     threading.Thread(target=run_crawl, args=("manual",), daemon=True).start()
