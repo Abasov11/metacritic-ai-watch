@@ -405,18 +405,29 @@ def fetch_reviews(
     client = client or default_client()
 
     api_url = f"{settings.metacritic_api_url}/reviews/metacritic/{kind}/games/{slug}/web"
+    reviews: list[Review] = []
     try:
-        payload = client.get_json(
-            api_url,
-            params={
-                "apiKey": settings.metacritic_api_key,
-                "offset": 0,
-                "limit": limit,
-                "filterBySentiment": "all",
-                "sort": "score" if kind == "critic" else "date",
-            },
-        )
-        reviews = parse_reviews_api(payload, kind, limit)
+        # The backend caps a page well below `limit` (10 for critics, 50 for users),
+        # so keep asking for the next offset until we have enough or it runs dry.
+        offset = 0
+        while len(reviews) < limit:
+            payload = client.get_json(
+                api_url,
+                params={
+                    "apiKey": settings.metacritic_api_key,
+                    "offset": offset,
+                    "limit": limit - len(reviews),
+                    "filterBySentiment": "all",
+                    "sort": "score" if kind == "critic" else "date",
+                },
+            )
+            items = (payload.get("data") or {}).get("items") or []
+            if not items:
+                break
+            reviews.extend(parse_reviews_api(payload, kind, limit - len(reviews)))
+            offset += len(items)
+            if offset >= (payload.get("data") or {}).get("totalResults", 0):
+                break
         if reviews:
             return reviews
         log.warning("reviews API returned nothing for %s/%s, falling back to HTML", slug, kind)

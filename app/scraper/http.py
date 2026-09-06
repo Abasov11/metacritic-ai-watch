@@ -34,10 +34,12 @@ class PoliteClient:
         min_delay: float | None = None,
         timeout: float | None = None,
         retries: int | None = None,
+        backoff_base: float = 1.0,
         user_agent: str | None = None,
     ) -> None:
         self.min_delay = settings.request_delay if min_delay is None else min_delay
         self.retries = settings.request_retries if retries is None else retries
+        self.backoff_base = backoff_base
         self._lock = threading.Lock()
         self._last_request_at = 0.0
         self._client = httpx.Client(
@@ -83,7 +85,7 @@ class PoliteClient:
                 )
             if attempt < self.retries:
                 # Exponential backoff with jitter, so parallel workers do not sync up.
-                time.sleep(2 ** (attempt - 1) + random.uniform(0, 0.5))
+                time.sleep(self.backoff_base * 2 ** (attempt - 1) + random.uniform(0, 0.5))
         raise ScrapeError(f"GET {url} failed after {self.retries} attempts: {last_error}")
 
     def get_text(self, url: str, **kwargs) -> str:
