@@ -1,5 +1,7 @@
 # metacritic-ai-watch
 
+[![CI](https://github.com/Abasov11/metacritic-ai-watch/actions/workflows/ci.yml/badge.svg)](https://github.com/Abasov11/metacritic-ai-watch/actions/workflows/ci.yml)
+
 Сервис-наблюдатель за новыми играми на Metacritic. Раз в час забирает 20 игр, которые
 сегодня ещё не обрабатывал, сохраняет карточку игры со всеми платформами и оценками,
 пересказывает отзывы критиков и игроков языковой моделью, ищет летсплей на YouTube и
@@ -153,6 +155,27 @@ you're not a bot»). Поиск при этом работает, а субти�
   список `images`, ни `og:image`, ни JSON-LD `image`. Для таких показывается явная
   заглушка «Нет обложки на Metacritic», а не битая картинка.
 
+## Как это выглядит
+
+Скриншоты живого сервиса.
+
+**Список игр** — обложка, лучший Metascore крупно, бейджи платформ с обеими оценками;
+сверху живой поиск, мультифильтр по платформам и сортировка.
+
+![Список игр](docs/screenshots/list.png)
+
+**Карточка игры** — описание, таблица платформ, два блока резюме («Критики» и
+«Игроки»), летсплей, похожие игры и исходные отзывы.
+
+![Карточка игры](docs/screenshots/game.png)
+
+**Мониторинг** — состояние воркеров, прогресс текущего обхода, счётчики за сегодня,
+последние обходы и живой лог событий по SSE.
+
+![Мониторинг](docs/screenshots/monitor.png)
+
+Мобильная вёрстка (375 px): [docs/screenshots/mobile.png](docs/screenshots/mobile.png).
+
 ## Выбор модели
 
 Основная — `deepseek/deepseek-v4-flash`, резервная — `google/gemini-2.5-flash-lite`
@@ -196,6 +219,7 @@ cp .env.example .env
 | `OPENROUTER_FALLBACK_MODEL` | `google/gemini-2.5-flash-lite` | Резерв при ошибке основной |
 | `LLM_TIMEOUT` | `60` | Таймаут вызова модели, с |
 | `TZ` | `Europe/Moscow` | Таймзона, по которой считается «сегодня» |
+| `SCHEDULER_ENABLED` | `1` | Часовой планировщик. `0` — веб работает, обходы только вручную (так собирается CI) |
 | `CRAWL_INTERVAL_MINUTES` | `60` | Период обхода |
 | `CRAWL_BATCH_SIZE` | `20` | Игр за обход |
 | `REVIEWS_PER_KIND` | `40` | Отзывов каждого вида на игру |
@@ -217,9 +241,14 @@ make test     # или .venv/bin/pytest -q
 make lint     # ruff check + ruff format --check
 ```
 
-164 теста, в сеть не ходят: HTTP мокается через `httpx.MockTransport`, парсеры работают
-на сохранённых страницах Metacritic в `tests/fixtures/`, вызовы модели и YouTube
-заглушены.
+238 тестов, в сеть не ходят: HTTP мокается через `httpx.MockTransport`, парсеры
+работают на сохранённых страницах Metacritic в `tests/fixtures/`, вызовы модели и
+YouTube заглушены.
+
+На каждый push и pull request в `main` GitHub Actions прогоняет
+[тот же набор](.github/workflows/ci.yml): `ruff check`, `ruff format --check`,
+`pytest -q`, `pip-audit`, плюс отдельным job собирает образ, поднимает контейнер и
+ждёт `200` от `/healthz`. Секреты не нужны ни одному из job.
 
 ## Деплой
 

@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A new push to the same branch makes the previous run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: lint, tests, audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format --check
+        run: ruff format --check .
+
+      # The suite never touches the network: HTTP is mocked and the parsers run on
+      # saved fixtures, so no secrets are needed here.
+      - name: pytest
+        run: pytest -q
+
+      - name: pip-audit
+        run: pip-audit
+
+  docker:
+    name: image builds and serves
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t metacritic-ai-watch:ci .
+
+      # SCHEDULER_ENABLED=0 keeps the container from crawling metacritic.com out of a
+      # GitHub runner; the key is a placeholder because no LLM call is made here.
+      - name: Start container
+        run: |
+          docker run -d --name mw-ci -p 8010:8010 \
+            -e OPENROUTER_API_KEY=x \
+            -e SCHEDULER_ENABLED=0 \
+            metacritic-ai-watch:ci
+
+      - name: Wait for /healthz
+        run: |
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8010/healthz || true)
+            if [ "$code" = "200" ]; then
+              echo "healthy after ${attempt}s"
+              curl -s http://127.0.0.1:8010/healthz
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::/healthz never returned 200"
+          docker logs mw-ci
+          exit 1
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f mw-ci || true

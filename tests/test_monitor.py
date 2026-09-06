@@ -332,3 +332,32 @@ def test_aborted_runs_do_not_count_as_running_anywhere(client):
     assert "browse:9" in body
     assert client.get("/healthz").json()["crawl_running"] is False
     assert monitor.snapshot(with_events=False)["run"] is None
+
+
+def test_the_scheduler_can_be_switched_off(monkeypatch, tmp_path):
+    started = []
+
+    class _SpyScheduler:
+        def start(self):
+            started.append("start")
+
+        def shutdown(self, wait=True):
+            started.append("shutdown")
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'sched.db'}", future=True)
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(main, "SessionLocal", factory)
+    monkeypatch.setattr(main, "init_db", lambda: None)
+    monkeypatch.setattr(main, "create_scheduler", lambda: _SpyScheduler())
+
+    monkeypatch.setattr(main.settings, "scheduler_enabled", False)
+    with TestClient(app=main.app) as client:
+        assert client.get("/healthz").status_code == 200
+    assert started == []  # never created, never started
+    assert any("планировщик выключен" in (e.get("message") or "") for e in monitor.events())
+
+    monkeypatch.setattr(main.settings, "scheduler_enabled", True)
+    with TestClient(app=main.app):
+        pass
+    assert started == ["start", "shutdown"]

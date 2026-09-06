@@ -119,13 +119,26 @@ async def lifespan(app: FastAPI):
         log.warning("closed %d crawl run(s) left running by a previous process", orphans)
     monitor.reset()
     monitor.emit(type="startup", message="сервис запущен")
-    scheduler = create_scheduler()
-    scheduler.start()
-    log.info("scheduler started, crawling every %d min", settings.crawl_interval_minutes)
+
+    scheduler = None
+    if settings.scheduler_enabled:
+        scheduler = create_scheduler()
+        scheduler.start()
+        log.info("scheduler started, crawling every %d min", settings.crawl_interval_minutes)
+    else:
+        log.warning("scheduler disabled, crawls only run when triggered by hand")
+        monitor.emit(
+            type="startup",
+            worker="crawler",
+            status="idle",
+            detail="планировщик выключен",
+            message="планировщик выключен настройкой (SCHEDULER_ENABLED=0)",
+        )
     try:
         yield
     finally:
-        scheduler.shutdown(wait=False)
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="Metacritic AI Watch", lifespan=lifespan)

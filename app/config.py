@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     request_delay: float = 1.0  # minimum seconds between two outgoing requests
 
     # --- crawler ---
+    #: Off in CI and in any read-only replica: the web app then serves the database
+    #: without ever starting a crawl of its own.
+    scheduler_enabled: bool = True
     tz: str = "Europe/Moscow"
     crawl_interval_minutes: int = 60
     crawl_batch_size: int = 20
