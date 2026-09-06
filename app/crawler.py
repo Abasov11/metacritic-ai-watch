@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import threading
 from collections import Counter
 from datetime import UTC, datetime, timedelta
@@ -461,6 +462,15 @@ def _run_crawl(reason: str, limit: int, now: datetime | None) -> CrawlRun:
         return run
 
 
+_VIDEO_ID_IN_ERROR = re.compile(r"\[youtube\]\s+[\w-]{6,}:\s*")
+
+
+def _reason(error: str | None) -> str:
+    """Group failures by cause, not by which video hit it."""
+    text = _VIDEO_ID_IN_ERROR.sub("", error or "без причины")
+    return " ".join(text.split())[:70]
+
+
 def refresh_letsplays(limit: int | None = None) -> int:
     """Retry the transcript for videos we found but could not read."""
     init_db()
@@ -490,7 +500,7 @@ def refresh_letsplays(limit: int | None = None) -> int:
                 log.info("%s: %s, %d символов", slug, row.transcript_source, row.transcript_chars)
             else:
                 still_none += 1
-                reasons[(row.error or "без причины").split(";")[0][:70]] += 1
+                reasons[_reason(row.error)] += 1
     print(f"получили расшифровку: {got}, осталось без неё: {still_none}")
     for reason, count in reasons.most_common():
         print(f"  {count:>3} x {reason}")
