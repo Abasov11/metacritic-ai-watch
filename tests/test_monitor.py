@@ -10,9 +10,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app import db as app_db
 from app import main, monitor
 from app.models import Base, CrawlRun
+from tests.conftest import bind_session
 
 
 @pytest.fixture(autouse=True)
@@ -27,9 +27,7 @@ def client(monkeypatch, tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'mon.db'}", future=True)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(main, "SessionLocal", factory)
-    # `_today_totals` resolves app.db.SessionLocal lazily, so patch it at the source.
-    monkeypatch.setattr(app_db, "SessionLocal", factory)
+    bind_session(monkeypatch, factory)
     monkeypatch.setattr(main, "init_db", lambda: None)
     monkeypatch.setattr(main, "create_scheduler", lambda: _NullScheduler())
     # The manual-run rate limit is module state; keep tests independent of each other.

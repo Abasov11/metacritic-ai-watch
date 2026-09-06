@@ -12,6 +12,7 @@ from app import crawler, similar
 from app.models import Base, CrawlItem, CrawlRun, Game, Platform, Review, Summary
 from app.scraper.metacritic import GameData, PlatformScore
 from app.scraper.metacritic import Review as ScrapedReview
+from tests.conftest import bind_session
 
 MSK = 3  # Europe/Moscow is UTC+3; 00:30 MSK is 21:30 UTC the previous day.
 
@@ -22,9 +23,8 @@ def db(monkeypatch, tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}", future=True)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(crawler, "SessionLocal", factory)
+    bind_session(monkeypatch, factory)
     monkeypatch.setattr(crawler, "init_db", lambda: None)
-    monkeypatch.setattr(similar, "SessionLocal", factory)
     similar.invalidate()
     return factory
 

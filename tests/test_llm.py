@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import llm
 from app.models import Base, LlmCall
+from tests.conftest import bind_session
 
 
 @pytest.fixture(autouse=True)
@@ -16,7 +17,7 @@ def db(monkeypatch, tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'llm.db'}", future=True)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(llm, "SessionLocal", factory)
+    bind_session(monkeypatch, factory)
     monkeypatch.setattr(llm.settings, "openrouter_api_key", "test-key")
     monkeypatch.setattr(llm.settings, "openrouter_model", "primary/model")
     monkeypatch.setattr(llm.settings, "openrouter_fallback_model", "fallback/model")

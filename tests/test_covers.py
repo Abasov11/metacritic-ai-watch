@@ -11,9 +11,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app import covers, main
+from app import covers, main, similar
 from app.models import Base, Game
 from app.scraper.http import PoliteClient
+from tests.conftest import bind_session
 
 PNG = bytes.fromhex("89504e470d0a1a0a") + b"pretend png"
 JPEG = b"\xff\xd8\xff" + b"pretend jpeg"
@@ -206,8 +207,9 @@ def client(monkeypatch, tmp_path, cover_dir):
     engine = create_engine(f"sqlite:///{tmp_path / 'cov.db'}", future=True)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(main, "SessionLocal", factory)
+    bind_session(monkeypatch, factory)
     monkeypatch.setattr(main, "init_db", lambda: None)
+    similar.invalidate()
     monkeypatch.setattr(main, "create_scheduler", lambda: _NullScheduler())
     with factory() as session:
         session.add(

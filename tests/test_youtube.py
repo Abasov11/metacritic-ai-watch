@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import crawler, youtube
 from app.models import Base, Game, LetsPlay
+from tests.conftest import bind_session
 
 #: The three false matches seen in production, reduced to their essentials.
 PRODUCTION_FALSE_MATCHES = [
@@ -318,7 +319,7 @@ def db(monkeypatch, tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'yt.db'}", future=True)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(crawler, "SessionLocal", factory)
+    bind_session(monkeypatch, factory)
     with factory() as session:
         session.add(Game(slug="silksong", title="Hollow Knight: Silksong", genres=[]))
         session.commit()

@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import main, similar
 from app.models import Base, Game
+from tests.conftest import bind_session
 
 
 @pytest.fixture
@@ -16,12 +17,11 @@ def client(monkeypatch, tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'sec.db'}", future=True)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(main, "SessionLocal", factory)
+    bind_session(monkeypatch, factory)
     monkeypatch.setattr(main, "init_db", lambda: None)
     monkeypatch.setattr(main, "create_scheduler", lambda: _NullScheduler())
     monkeypatch.setattr(main, "run_crawl", lambda reason: None)
     monkeypatch.setattr(main, "_last_manual_run", 0.0)
-    monkeypatch.setattr(similar, "SessionLocal", factory)
     similar.invalidate()
     with factory() as session:
         session.add(Game(slug="a-game", title="A Game", genres=[]))

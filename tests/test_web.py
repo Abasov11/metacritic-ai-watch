@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import main, similar
 from app.models import Base, CrawlRun, Game, Platform, Review, Summary
+from tests.conftest import bind_session
 
 SEED = [
     # slug, title, developer, metascore, userscore, platforms, genres, description
@@ -63,10 +64,9 @@ def client(monkeypatch, tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'web.db'}", future=True)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(main, "SessionLocal", factory)
+    bind_session(monkeypatch, factory)
     monkeypatch.setattr(main, "init_db", lambda: None)
     monkeypatch.setattr(main, "create_scheduler", lambda: _NullScheduler())
-    monkeypatch.setattr(similar, "SessionLocal", factory)
     similar.invalidate()
 
     base = datetime(2026, 9, 1, tzinfo=UTC).replace(tzinfo=None)
