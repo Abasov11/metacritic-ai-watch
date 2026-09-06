@@ -51,7 +51,7 @@ def make_game(slug: str, title: str | None = None) -> GameData:
 @pytest.fixture
 def scraper(monkeypatch):
     """Stub the whole scraper surface and record what was asked for."""
-    calls = {"games": [], "new_releases": 0, "browse": []}
+    calls = {"games": [], "new_releases": 0, "browse": [], "covers": []}
 
     def fetch_new_releases(**_kwargs):
         calls["new_releases"] += 1
@@ -76,7 +76,13 @@ def scraper(monkeypatch):
     monkeypatch.setattr(crawler.metacritic, "fetch_new_releases", fetch_new_releases)
     monkeypatch.setattr(crawler.metacritic, "fetch_browse_new", fetch_browse_new)
     monkeypatch.setattr(crawler.metacritic, "fetch_game", fetch_game)
+    def cache_cover(slug, url, client=None, force=False):
+        calls["covers"].append((slug, url))
+        return f"{slug}.jpg"
+
     monkeypatch.setattr(crawler.metacritic, "fetch_reviews", fetch_reviews)
+    # Covers have their own tests; here they must never reach the network.
+    monkeypatch.setattr(crawler.covers, "cache_cover", cache_cover)
     return calls
 
 
@@ -190,6 +196,13 @@ def test_recrawl_updates_instead_of_duplicating(db, scraper, llm, monkeypatch):
         assert session.scalar(select(func.count(Platform.id))) == 2
         assert session.scalar(select(func.count(Review.id))) == 6  # 3 critic + 3 user
         assert session.scalar(select(func.count(Summary.id))) == 2
+
+
+def test_the_cover_is_cached_locally_during_a_crawl(db, scraper, llm):
+    crawler.run_crawl("test", limit=1)
+    assert scraper["covers"] == [("nr-0", "https://img.test/nr-0.jpg")]
+    with db() as session:
+        assert session.scalar(select(Game).where(Game.slug == "nr-0")).cover_path == "nr-0.jpg"
 
 
 def test_scraped_fields_land_in_the_database(db, scraper, llm):
