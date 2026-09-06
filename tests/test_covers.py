@@ -17,6 +17,7 @@ from app.scraper.http import PoliteClient
 
 PNG = bytes.fromhex("89504e470d0a1a0a") + b"pretend png"
 JPEG = b"\xff\xd8\xff" + b"pretend jpeg"
+WEBP = b"RIFF" + b"\x00\x00\x00\x00" + b"WEBP" + b"pretend webp"
 
 
 @pytest.fixture
@@ -55,6 +56,28 @@ def test_extension_follows_the_content_type(cover_dir):
     )
     assert name == "g.png"
     assert (cover_dir / "g.png").exists()
+
+
+def test_the_bytes_win_over_a_wrong_content_type(cover_dir):
+    # Metacritic really does serve some PNG covers as image/jpeg.
+    name = covers.cache_cover(
+        "g", "https://img.test/x", fake_client(image_response(PNG, "image/jpeg"))
+    )
+    assert name == "g.png"
+    assert (cover_dir / "g.png").read_bytes() == PNG
+
+
+def test_a_recognised_body_survives_a_useless_content_type(cover_dir):
+    handler = image_response(WEBP, "application/octet-stream")
+    assert covers.cache_cover("g", "https://img.test/x", fake_client(handler)) == "g.webp"
+
+
+def test_changing_format_replaces_the_old_file(cover_dir):
+    covers.cache_cover("g", "https://img.test/x", fake_client(image_response(JPEG)))
+    assert (cover_dir / "g.jpg").exists()
+    covers.cache_cover("g", "https://img.test/x", fake_client(image_response(PNG)), force=True)
+    assert (cover_dir / "g.png").exists()
+    assert not (cover_dir / "g.jpg").exists()
 
 
 def test_a_fresh_copy_is_not_downloaded_again(cover_dir):
@@ -111,13 +134,35 @@ def test_oversize_body_is_refused_even_when_the_length_lies(cover_dir):
     assert not cover_dir.exists() or not list(cover_dir.iterdir())
 
 
-def test_a_failed_download_keeps_the_previous_copy(cover_dir):
+@pytest.mark.parametrize("status", [403, 404, 500])
+def test_a_failed_download_keeps_the_previous_copy(cover_dir, status):
     client = fake_client(image_response())
     covers.cache_cover("g", "https://img.test/x.jpg", client)
 
-    broken = fake_client(lambda request: httpx.Response(500))
+    broken = fake_client(lambda request: httpx.Response(status))
     assert covers.cache_cover("g", "https://img.test/x.jpg", broken, force=True) == "g.jpg"
     assert (cover_dir / "g.jpg").read_bytes() == JPEG
+
+
+@pytest.mark.parametrize("status", [403, 500])
+def test_a_failed_download_never_raises(cover_dir, status):
+    # A cover is cosmetic; a 403 on one image must not abort the whole crawl.
+    broken = fake_client(lambda request: httpx.Response(status))
+    assert covers.cache_cover("fresh", "https://img.test/x.jpg", broken) is None
+
+
+def test_legacy_signed_urls_are_rewritten_to_the_original():
+    signed = (
+        "https://www.metacritic.com/a/img/resize/58df2b2b6a9dc8df88e6d5f79175f18616bb4a45"
+        "/catalog/provider/7/2/7-1781631535.jpg?auto=webp&fit=cover&width=226"
+    )
+    assert covers.unsigned_url(signed) == (
+        "https://www.metacritic.com/a/img/catalog/provider/7/2/7-1781631535.jpg"
+    )
+    # Already-clean URLs and empty values pass through untouched.
+    plain = "https://www.metacritic.com/a/img/catalog/provider/7/2/7-1.jpg"
+    assert covers.unsigned_url(plain) == plain
+    assert covers.unsigned_url(None) is None
 
 
 def test_a_missing_url_does_not_wipe_the_cache(cover_dir):

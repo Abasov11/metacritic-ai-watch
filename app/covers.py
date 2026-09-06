@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.config import settings
-from app.scraper.http import PoliteClient, ScrapeError, default_client
+from app.scraper.http import PoliteClient, default_client
 
 log = logging.getLogger(__name__)
 
@@ -29,9 +29,41 @@ EXTENSIONS = {
     "image/avif": ".avif",
 }
 
+#: Leading bytes -> extension. Metacritic mislabels some covers (a PNG served as
+#: image/jpeg), so the file itself decides, not the header.
+MAGIC = (
+    (b"\xff\xd8\xff", ".jpg"),
+    (b"\x89PNG\r\n\x1a\n", ".png"),
+    (b"GIF87a", ".gif"),
+    (b"GIF89a", ".gif"),
+)
+
+#: Legacy rows hold a signed `/a/img/resize/<hash>/…` URL that now answers 403.
+_SIGNED_RE = re.compile(r"(/a/img/)resize/[0-9a-f]+/")
+
 #: Cache file names are `<slug>.<ext>` and nothing else — the serving route rejects
 #: everything that does not match, so no request can escape the directory.
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,199}\.(jpg|png|webp|gif|avif)$")
+
+
+def sniff_extension(body: bytes, content_type: str) -> str | None:
+    """Extension for the image, from its magic bytes; the header is only a fallback."""
+    for prefix, extension in MAGIC:
+        if body.startswith(prefix):
+            return extension
+    if body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+        return ".webp"
+    if body[4:12] == b"ftypavif":
+        return ".avif"
+    return EXTENSIONS.get(content_type)
+
+
+def unsigned_url(url: str | None) -> str | None:
+    """Rewrite a signed Metacritic image URL to the unsigned original, and drop the
+    resize query string that went with it."""
+    if not url:
+        return url
+    return _SIGNED_RE.sub(r"\1", url.split("?", 1)[0])
 
 
 def covers_dir() -> Path:
@@ -74,14 +106,10 @@ def cache_cover(
 
     try:
         response = (client or default_client()).get(url)
-    except (ScrapeError, ValueError) as exc:
+    except Exception as exc:
+        # Any failure here — 403, timeout, DNS — is cosmetic. It must never take a
+        # crawl down with it, so nothing escapes.
         log.warning("cover download failed for %s: %s", slug, exc)
-        return existing
-
-    content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
-    extension = EXTENSIONS.get(content_type)
-    if extension is None:
-        log.warning("cover for %s is not an image (%s)", slug, content_type or "no type")
         return existing
 
     # Trust the advertised length to bail out early, then check what actually arrived.
@@ -92,6 +120,12 @@ def cache_cover(
     body = response.content
     if len(body) > MAX_BYTES:
         log.warning("cover for %s is %d bytes, over the limit", slug, len(body))
+        return existing
+
+    content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
+    extension = sniff_extension(body, content_type)
+    if extension is None:
+        log.warning("cover for %s is not an image (%s)", slug, content_type or "no type")
         return existing
 
     directory = covers_dir()

@@ -316,6 +316,8 @@ def refresh_covers() -> int:
     done = failed = 0
     with SessionLocal() as session:
         for game in session.scalars(select(Game).order_by(Game.id)).all():
+            # Rows written before the signed-URL fix still point at a 403; repair them.
+            game.cover_url = covers.unsigned_url(game.cover_url)
             name = covers.cache_cover(game.slug, game.cover_url, client, force=True)
             if name:
                 game.cover_path = name
