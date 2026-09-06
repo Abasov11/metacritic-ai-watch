@@ -184,31 +184,20 @@ def fetch_browse_new(page: int = 1, client: PoliteClient | None = None) -> list[
 # ---------------------------------------------------------------------- game details
 
 
-def _cover_url(html: str, images: list[dict[str, Any]], json_ld: dict[str, Any]) -> str | None:
+def _cover_url(images: list[dict[str, Any]], json_ld: dict[str, Any]) -> str | None:
     """Best cover image: the portrait card art if the page has one, else the hero shot.
 
-    Metacritic's `<img>` tags point at signed, resized derivatives; we reuse those when
-    we can find the matching one, and otherwise fall back to the original in the asset
-    bucket (which is served unsigned).
+    The `<img>` tags on the page point at signed `/a/img/resize/<hash>/…` derivatives.
+    Those signatures do not survive being replayed — Metacritic answers 403 "Invalid
+    hash" for them outside the original page render — so we address the untouched
+    original in the asset bucket instead, which is served unsigned.
     """
     by_type = {img.get("typeName"): img for img in images if isinstance(img, dict)}
     image = by_type.get("cardImage") or by_type.get("mainImage") or (images[0] if images else None)
-    if not isinstance(image, dict):
-        return json_ld.get("image") or None
-
-    filename = image.get("filename")
-    if filename:
-        signed = re.search(
-            r"https://www\.metacritic\.com/a/img/resize/[0-9a-f]+/[^\"'\s]*?"
-            + re.escape(filename),
-            html,
-        )
-        if signed:
-            return signed.group(0)
-
-    bucket_type, bucket_path = image.get("bucketType"), image.get("bucketPath")
-    if bucket_type and bucket_path:
-        return f"{settings.metacritic_base_url}/a/img/{bucket_type}{bucket_path}"
+    if isinstance(image, dict):
+        bucket_type, bucket_path = image.get("bucketType"), image.get("bucketPath")
+        if bucket_type and bucket_path:
+            return f"{settings.metacritic_base_url}/a/img/{bucket_type}{bucket_path}"
     return json_ld.get("image") or None
 
 
@@ -285,7 +274,7 @@ def parse_game(html: str, slug: str) -> GameData:
         title=item.get("title") or "",
         slug=item.get("slug") or slug,
         metacritic_url=f"{settings.metacritic_base_url}/game/{item.get('slug') or slug}/",
-        cover_url=_cover_url(html, item.get("images") or [], json_ld),
+        cover_url=_cover_url(item.get("images") or [], json_ld),
         description=item.get("description") or json_ld.get("description") or None,
         developer=_company(companies, "Developer"),
         publisher=_company(companies, "Publisher"),

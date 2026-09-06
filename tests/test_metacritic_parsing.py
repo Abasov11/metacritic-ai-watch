@@ -69,9 +69,12 @@ def test_game_core_fields(game):
     assert game.description.startswith("Discover a vast, haunted kingdom")
 
 
-def test_game_cover_is_a_usable_image_url(game):
-    assert game.cover_url.startswith("https://www.metacritic.com/a/img/")
-    assert game.cover_url.endswith(".jpg")
+def test_game_cover_points_at_the_unsigned_original(game):
+    # Signed /a/img/resize/<hash>/ URLs answer 403 "Invalid hash" when replayed.
+    assert game.cover_url == (
+        "https://www.metacritic.com/a/img/catalog/provider/7/2/7-1757261088.jpg"
+    )
+    assert "/resize/" not in game.cover_url
 
 
 def test_game_video_url(game):
