@@ -123,8 +123,11 @@ def _today_totals() -> dict[str, Any]:
     since_utc = day_start_utc().replace(tzinfo=None)
     try:
         with SessionLocal() as session:
+            # A run that hit the lock did no work; counting it would inflate the day.
             runs = session.scalars(
-                select(CrawlRun).where(CrawlRun.started_at >= since_utc)
+                select(CrawlRun).where(
+                    CrawlRun.started_at >= since_utc, CrawlRun.status != "skipped"
+                )
             ).all()
             run_ids = [r.id for r in runs]
             failed = (

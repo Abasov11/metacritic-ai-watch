@@ -232,3 +232,11 @@ def test_stream_pushes_events_emitted_after_it_opened(client, monkeypatch):
     assert any(e["slug"] == "late-game" for e in logs)
     # A state frame follows the log frame, so the dashboard counters stay in step.
     assert [name for name, _ in frames][-1] == "state"
+
+
+def test_skipped_runs_do_not_count_towards_today(client):
+    with main.SessionLocal() as session:
+        session.add(CrawlRun(source="-", reason="scheduled", status="skipped",
+                             error="another crawl is already running"))
+        session.commit()
+    assert client.get("/healthz").json()["today"]["runs"] == 1
