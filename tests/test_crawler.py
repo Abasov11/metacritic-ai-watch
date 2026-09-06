@@ -51,7 +51,7 @@ def make_game(slug: str, title: str | None = None) -> GameData:
 @pytest.fixture
 def scraper(monkeypatch):
     """Stub the whole scraper surface and record what was asked for."""
-    calls = {"games": [], "new_releases": 0, "browse": [], "covers": []}
+    calls = {"games": [], "new_releases": 0, "browse": [], "covers": [], "letsplays": []}
 
     def fetch_new_releases(**_kwargs):
         calls["new_releases"] += 1
@@ -80,9 +80,17 @@ def scraper(monkeypatch):
         calls["covers"].append((slug, url))
         return f"{slug}.jpg"
 
+    def build_letsplay(title, game_id, budget=None):
+        calls["letsplays"].append(title)
+        return {"video_id": f"vid-{game_id}", "url": "https://y/x", "title": "Run",
+                "channel": "Ch", "view_count": 1, "transcript_source": "subtitles",
+                "transcript_chars": 10, "verdict": {"verdict": "ок", "highlights": []},
+                "model": "test/model", "error": None}
+
     monkeypatch.setattr(crawler.metacritic, "fetch_reviews", fetch_reviews)
-    # Covers have their own tests; here they must never reach the network.
+    # Covers and let's plays have their own tests; here neither may reach the network.
     monkeypatch.setattr(crawler.covers, "cache_cover", cache_cover)
+    monkeypatch.setattr(crawler.youtube, "build_letsplay", build_letsplay)
     return calls
 
 
@@ -203,6 +211,25 @@ def test_the_cover_is_cached_locally_during_a_crawl(db, scraper, llm):
     assert scraper["covers"] == [("nr-0", "https://img.test/nr-0.jpg")]
     with db() as session:
         assert session.scalar(select(Game).where(Game.slug == "nr-0")).cover_path == "nr-0.jpg"
+
+
+def test_the_letsplay_stage_runs_for_each_game(db, scraper, llm):
+    from app.models import LetsPlay
+
+    crawler.run_crawl("test", limit=2)
+    assert scraper["letsplays"] == ["Nr 0", "Nr 1"]
+    with db() as session:
+        assert session.scalar(select(func.count(LetsPlay.id))) == 2
+
+
+def test_the_letsplay_stage_can_be_switched_off(db, scraper, llm, monkeypatch):
+    from app.models import LetsPlay
+
+    monkeypatch.setattr(crawler.settings, "youtube_enabled", False)
+    crawler.run_crawl("test", limit=1)
+    assert scraper["letsplays"] == []
+    with db() as session:
+        assert session.scalar(select(func.count(LetsPlay.id))) == 0
 
 
 def test_scraped_fields_land_in_the_database(db, scraper, llm):

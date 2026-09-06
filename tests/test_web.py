@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app import main, similar
@@ -235,3 +235,69 @@ def test_healthz(client):
     assert payload["games"] == 4
     assert payload["last_run"]["source"] == "new_releases"
     assert payload["last_run"]["processed"] == 4
+
+
+def test_letsplay_block_renders_the_video_and_the_verdict(client):
+    from app.models import LetsPlay
+
+    with main.SessionLocal() as session:
+        game = session.scalar(select(Game).where(Game.slug == "silksong"))
+        session.add(LetsPlay(
+            game_id=game.id, video_id="abc12345678", url="https://youtu.be/abc12345678",
+            title="Silksong blind run", channel="SomeChannel", view_count=1234567,
+            transcript_source="subtitles", transcript_chars=8421, model="test/model",
+            verdict={"verdict": "Блогер в восторге.", "highlights": ["бои", "музыка"]},
+        ))
+        session.commit()
+
+    body = client.get("/game/silksong").text
+    assert "Летсплей" in body
+    assert "i.ytimg.com/vi/abc12345678/mqdefault.jpg" in body
+    assert "https://youtu.be/abc12345678" in body
+    assert "SomeChannel" in body
+    assert "1 234 567 просмотров" in body
+    assert "текст из субтитров" in body
+    assert "Блогер в восторге." in body
+    assert "бои" in body and "музыка" in body
+
+
+def test_letsplay_block_is_honest_about_a_missing_transcript(client):
+    from app.models import LetsPlay
+
+    with main.SessionLocal() as session:
+        game = session.scalar(select(Game).where(Game.slug == "nba"))
+        session.add(LetsPlay(
+            game_id=game.id, video_id="zzz11111111", url="https://youtu.be/zzz11111111",
+            title="NBA 2K27 season", channel="Hoops", view_count=42,
+            transcript_source="none", transcript_chars=0, verdict={},
+            error="YouTube блокирует запросы с этого IP",
+        ))
+        session.commit()
+
+    body = client.get("/game/nba").text
+    assert "расшифровки нет" in body
+    assert "YouTube блокирует запросы с этого IP" in body
+
+
+def test_letsplay_block_says_when_nothing_ran_yet(client):
+    assert "Летсплей ещё не искали." in client.get("/game/tiny").text
+
+
+def test_api_exposes_the_letsplay(client):
+    from app.models import LetsPlay
+
+    with main.SessionLocal() as session:
+        game = session.scalar(select(Game).where(Game.slug == "dawnwalker"))
+        session.add(LetsPlay(
+            game_id=game.id, video_id="v1", url="https://youtu.be/v1", title="Run",
+            channel="Ch", view_count=10, transcript_source="whisper",
+            transcript_chars=100, verdict={"verdict": "ок", "highlights": []},
+            model="test/model",
+        ))
+        session.commit()
+
+    payload = client.get("/api/games/dawnwalker").json()
+    assert payload["letsplay"]["video_id"] == "v1"
+    assert payload["letsplay"]["transcript_source"] == "whisper"
+    assert payload["letsplay"]["verdict"]["verdict"] == "ок"
+    assert client.get("/api/games/tiny").json()["letsplay"] is None
