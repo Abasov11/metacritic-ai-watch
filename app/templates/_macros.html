@@ -21,6 +21,11 @@
     <img class="cover__img" src="{{ src }}" alt="Обложка: {{ game.title }}"
          loading="lazy" sizes="{{ sizes }}">
   {% else %}
-    <span class="cover__empty" aria-hidden="true">{{ game.title[:1] }}</span>
+    {# Some games genuinely have no artwork on Metacritic; say so instead of
+       looking like a broken image. #}
+    <span class="cover__empty" title="Нет обложки на Metacritic">
+      <span class="cover__empty-letter" aria-hidden="true">{{ (game.title or "?")[:1] }}</span>
+      <span class="cover__empty-note">Нет обложки на Metacritic</span>
+    </span>
   {% endif %}
 {% endmacro %}

@@ -151,6 +151,7 @@ img { display: block; max-width: 100%; }
 
 .cover {
   position: relative;
+  container-type: inline-size;  /* lets the placeholder letter scale with the card */
   aspect-ratio: 3 / 4;
   background: var(--surface-2);
   border-radius: 8px;
@@ -158,9 +159,17 @@ img { display: block; max-width: 100%; }
 }
 .cover__img { width: 100%; height: 100%; object-fit: cover; }
 .cover__empty {
-  display: grid; place-items: center; height: 100%;
-  color: var(--muted); font-size: 2.5rem; font-weight: 700;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.45rem; height: 100%; padding: 0.6rem; text-align: center;
 }
+.cover__empty-letter {
+  font-size: clamp(2rem, 18cqw, 3rem); font-weight: 700; line-height: 1; color: #4a5164;
+}
+.cover__empty-note {
+  font-size: 0.7rem; line-height: 1.3; color: var(--muted); text-wrap: balance;
+}
+.cover--lg .cover__empty-letter { font-size: 3.5rem; }
+.cover--lg .cover__empty-note { font-size: 0.8rem; }
 .cover--lg { aspect-ratio: 3 / 4; width: 260px; max-width: 100%; flex: none; }
 .cover__score {
   position: absolute; left: 8px; bottom: 8px;

@@ -275,3 +275,48 @@ def test_api_exposes_the_local_cover_and_the_source(client):
     payload = client.get("/api/games/cached").json()
     assert payload["cover_url"] == "/covers/cached.jpg"
     assert payload["cover_source_url"] == "https://img.test/remote.jpg"
+
+
+# ------------------------------------------------------- the missing-cover notice
+
+
+def test_a_game_without_any_cover_says_so_in_the_list(client):
+    body = client.get("/").text
+    assert 'class="cover__empty" title="Нет обложки на Metacritic"' in body
+    assert "Нет обложки на Metacritic</span>" in body
+    assert 'class="cover__empty-letter" aria-hidden="true">B' in body  # "Bare Game"
+
+
+def test_a_game_without_any_cover_says_so_on_its_card(client):
+    hero = hero_cover(client.get("/game/bare").text)
+    assert hero.count("Нет обложки на Metacritic") == 2  # title attribute and note
+    assert "cover__empty-note" in hero
+
+
+def hero_cover(body: str) -> str:
+    """The game page's own cover block, without the similar-games cards below it."""
+    start = body.index('<div class="cover cover--lg">')
+    return body[start : body.index("</div>", start)]
+
+
+def test_a_game_with_a_cover_is_untouched(client):
+    hero = hero_cover(client.get("/game/cached").text)
+    assert 'src="/covers/cached.jpg"' in hero
+    assert "cover__empty" not in hero
+    assert "Нет обложки" not in hero
+
+
+def test_a_game_falling_back_to_the_remote_cover_is_untouched(client):
+    hero = hero_cover(client.get("/game/remote").text)
+    assert 'src="https://img.test/remote.jpg"' in hero
+    assert "Нет обложки" not in hero
+
+
+def test_an_empty_title_does_not_break_the_placeholder(client):
+    from app.models import Game
+
+    with main.SessionLocal() as session:
+        session.add(Game(slug="untitled", title="", genres=[]))
+        session.commit()
+    body = client.get("/game/untitled").text
+    assert 'class="cover__empty-letter" aria-hidden="true">?' in body
