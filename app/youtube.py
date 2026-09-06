@@ -38,7 +38,7 @@ _WORD_RE = re.compile(r"[a-zа-яё0-9]+", re.IGNORECASE)
 #: A playthrough says so somewhere. Without one of these a match is almost always a
 #: music video, a meme clip or a video about a different game that merely shares a word.
 LETSPLAY_MARKER = re.compile(
-    r"(let'?s\s*play|letsplay|game\s*play|gameplay|walk\s*through|walkthrough|"
+    r"(let'?s\s*(?:play|try)|letsplay|game\s*play|gameplay|walk\s*through|walkthrough|"
     r"play\s*through|playthrough|first\s+(?:look|time|playthrough)|blind\s+run|"
     r"no\s+commentary|"
     r"part\s*\d+|ep(?:isode)?\.?\s*\d+|прохождени\w*|летсплей|геймплей)",
@@ -53,9 +53,13 @@ STORE_LINK = re.compile(
     re.IGNORECASE,
 )
 
-#: Titles of one or two meaningful words ("Flip Off", "Tilefall") match far too much,
-#: so for those we insist on the whole phrase rather than a share of the words.
+#: Titles of one or two meaningful words ("Flip Off", "Tilefall") are often ordinary
+#: English, so they must appear as the whole phrase in the title *and* the description.
 SHORT_TITLE_WORDS = 2
+#: Three-word names ("Football Legacy Manager", "Next Reign Kingdom") are built from
+#: generic words often enough that a 60% overlap matched a different game half the time
+#: in production, so every word has to be there — in any order.
+ALL_WORDS_TITLE_WORDS = 3
 
 
 class YouTubeError(RuntimeError):
@@ -99,9 +103,9 @@ def mentions_game(entry: dict, game_title: str) -> bool:
     if not wanted:
         return False
     if len(wanted) <= SHORT_TITLE_WORDS:
-        # A one- or two-word name is often ordinary English ("Flip Off") or a chapter
-        # in someone else's game ("Kupala Night" in Cabernet), so the phrase has to
-        # show up in the title *and* the description before we believe it.
+        # One or two words are often ordinary English ("Flip Off") or a chapter of
+        # someone else's game ("Kupala Night" in Cabernet): demand the whole phrase in
+        # the title *and* the description.
         phrase = _normalise(game_title)
         if not phrase:
             return False
@@ -109,9 +113,13 @@ def mentions_game(entry: dict, game_title: str) -> bool:
             entry.get("description") or ""
         )
 
-    # Most of the title has to show up; sequels and subtitles get dropped otherwise.
     haystack = f"{entry.get('title') or ''} {entry.get('description') or ''}"
-    return len(wanted & _title_words(haystack)) / len(wanted) >= 0.6
+    found = wanted & _title_words(haystack)
+    if len(wanted) <= ALL_WORDS_TITLE_WORDS:
+        return found == wanted
+
+    # Most of the title has to show up; sequels and subtitles get dropped otherwise.
+    return len(found) / len(wanted) >= 0.6
 
 
 def is_letsplay(entry: dict, game_title: str) -> bool:

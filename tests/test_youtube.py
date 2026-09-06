@@ -578,3 +578,59 @@ def test_a_store_link_cannot_admit_a_video_that_fails_the_filters(monkeypatch):
     monkeypatch.setattr(youtube, "_ytsearch", lambda q: [junk])
     assert youtube.has_store_link(junk) is True
     assert youtube.search_letsplay("I Am Angel") is None
+
+
+def test_three_word_titles_need_every_word():
+    # "Football Legacy Manager 27" used to match "Football Manager 2014" on a 60%
+    # word overlap; the distinguishing word has to be there too.
+    wrong = {
+        "id": "fm",
+        "duration": 3600,
+        "view_count": 5658,
+        "title": "Football Manager 2014 Let's Play - Manchester United #27",
+        "description": "Watch my new Football Manager 2017 series here",
+    }
+    right = {
+        "id": "flm",
+        "duration": 3600,
+        "view_count": 12,
+        "title": "Football Legacy Manager 27 gameplay",
+        "description": "first look at the new manager sim",
+    }
+    assert youtube.is_letsplay(wrong, "Football Legacy Manager 27") is False
+    assert youtube.is_letsplay(right, "Football Legacy Manager 27") is True
+
+
+def test_a_three_word_title_may_match_on_the_description_alone():
+    # Every word must appear, but the title and description count together.
+    entry = {
+        "id": "x",
+        "duration": 3600,
+        "view_count": 10,
+        "title": "Let's Try: a musical influenced roguelike",
+        "description": "Today we play Space Disco Outlaw, out now on Steam",
+    }
+    assert youtube.is_letsplay(entry, "Space Disco Outlaw") is True
+
+
+def test_three_word_titles_tolerate_reordering():
+    entry = {
+        "id": "x",
+        "duration": 3600,
+        "view_count": 10,
+        "title": "Silksong Hollow Knight — part 1",
+        "description": "",
+    }
+    assert youtube.is_letsplay(entry, "Hollow Knight: Silksong") is True
+
+
+def test_four_word_titles_still_use_word_overlap():
+    entry = {
+        "id": "x",
+        "duration": 3600,
+        "view_count": 10,
+        "title": "Marsupilami 2 Salsa Palombia gameplay",
+        "description": "",
+    }
+    assert len(youtube._title_words("Marsupilami 2 - Salsa Palombia")) == 3
+    assert youtube.is_letsplay(entry, "Marsupilami 2 - Salsa Palombia") is True
