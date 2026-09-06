@@ -158,6 +158,9 @@ def process_game(session, slug: str) -> tuple[str, str | None]:
     client = default_client()
     data = metacritic.fetch_game(slug, client=client)
     game = _upsert_game(session, data)
+    # SQLite takes a single write lock. Commit before every slow network call, or the
+    # LLM client's own connection cannot write its `llm_calls` row and times out.
+    session.commit()
 
     llm_error: str | None = None
     for kind in ("critic", "user"):
@@ -180,7 +183,10 @@ def process_game(session, slug: str) -> tuple[str, str | None]:
                 model=None,
                 review_count=0,
             )
+            session.commit()
             continue
+
+        session.commit()
         try:
             result = summarize_reviews(
                 game.title, kind, [(r.author, r.score, r.text) for r in stored], game.id
@@ -191,6 +197,7 @@ def process_game(session, slug: str) -> tuple[str, str | None]:
             log.warning("summary failed for %s (%s): %s", slug, kind, exc)
             continue
         _upsert_summary(session, game, kind, review_count=len(stored), **result)
+        session.commit()
 
     if llm_error is None:
         game.last_crawled_at = utcnow()
