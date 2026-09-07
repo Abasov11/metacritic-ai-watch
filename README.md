@@ -304,7 +304,7 @@ yt-dlp **переписывает** файл кук обновлённой се�
 
 ```bash
 cp .env.example .env && $EDITOR .env    # вписать OPENROUTER_API_KEY
-make dev                                # поднимет .venv и запустит на 127.0.0.1:8010
+make dev                                # поднимет .venv и запустит на 127.0.0.1:8012
 ```
 
 То же самое без make:
@@ -312,7 +312,7 @@ make dev                                # поднимет .venv и запуст
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 cp .env.example .env
-.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8012
 ```
 
 Схема базы создаётся при старте, миграции не нужны. Первый обход планировщик запустит
@@ -366,7 +366,7 @@ YouTube заглушены.
 
 ## Деплой
 
-Сервис слушает только `127.0.0.1:8010`, TLS и публичный порт — на nginx.
+Сервис слушает только `127.0.0.1:8012`, TLS и публичный порт — на nginx.
 
 ### Docker
 
@@ -374,7 +374,7 @@ YouTube заглушены.
 cp .env.example .env && $EDITOR .env
 mkdir -p data && sudo chown -R 1000:1000 data   # uid пользователя в образе
 docker compose up -d --build
-curl -s localhost:8010/healthz
+curl -s localhost:8012/healthz
 ```
 
 `data/` смонтирован как volume — база и обложки переживают пересборку.

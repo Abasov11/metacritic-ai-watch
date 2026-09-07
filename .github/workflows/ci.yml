@@ -59,7 +59,7 @@ jobs:
       # GitHub runner; the key is a placeholder because no LLM call is made here.
       - name: Start container
         run: |
-          docker run -d --name mw-ci -p 8010:8010 \
+          docker run -d --name mw-ci -p 8012:8012 \
             -e OPENROUTER_API_KEY=x \
             -e SCHEDULER_ENABLED=0 \
             metacritic-ai-watch:ci
@@ -67,10 +67,10 @@ jobs:
       - name: Wait for /healthz
         run: |
           for attempt in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8010/healthz || true)
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8012/healthz || true)
             if [ "$code" = "200" ]; then
               echo "healthy after ${attempt}s"
-              curl -s http://127.0.0.1:8010/healthz
+              curl -s http://127.0.0.1:8012/healthz
               exit 0
             fi
             sleep 1

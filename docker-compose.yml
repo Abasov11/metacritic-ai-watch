@@ -7,12 +7,12 @@ services:
     env_file: .env
     # Bound to loopback on purpose: nginx terminates TLS and proxies here.
     ports:
-      - "127.0.0.1:8010:8010"
+      - "127.0.0.1:8012:8012"
     volumes:
       # SQLite database and cached covers. Must be writable by uid 1000.
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8010/healthz', timeout=4).status == 200 else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8012/healthz', timeout=4).status == 200 else 1)"]
       interval: 30s
       timeout: 5s
       start_period: 20s

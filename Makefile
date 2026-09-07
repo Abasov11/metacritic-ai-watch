@@ -12,8 +12,8 @@ $(VENV):
 
 venv: $(VENV)  ## create .venv and install dependencies
 
-dev: $(VENV)  ## run the app locally on http://127.0.0.1:8010
-	$(VENV)/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010 --reload
+dev: $(VENV)  ## run the app locally on http://127.0.0.1:8012
+	$(VENV)/bin/uvicorn app.main:app --host 127.0.0.1 --port 8012 --reload
 
 test: $(VENV)  ## run the test suite (never touches the network)
 	$(VENV)/bin/pytest -q
