@@ -194,7 +194,7 @@ def test_without_subtitles_and_without_whisper_the_source_is_none(monkeypatch):
     monkeypatch.setattr(youtube, "fetch_subtitles", lambda vid, seconds_left=None: "")
     text, source, error = youtube.get_transcript("v", 60)
     assert (text, source) == ("", "none")
-    assert "whisper skipped" in error
+    assert error == "у ролика нет субтитров, распознавание речи отключено"
 
 
 def test_a_blocked_subtitle_request_is_reported_not_raised(monkeypatch):
@@ -224,7 +224,8 @@ def test_a_whisper_crash_degrades_to_none(monkeypatch):
     monkeypatch.setattr(youtube, "transcribe_audio", boom)
     text, source, error = youtube.get_transcript("v", 300)
     assert (text, source) == ("", "none")
-    assert "whisper failed" in error
+    assert "распознавание речи не удалось" in error
+    assert "out of memory" in error
 
 
 def test_whisper_is_refused_when_it_is_switched_off():
@@ -292,7 +293,7 @@ def test_build_letsplay_records_why_it_failed(search, monkeypatch):
     assert record["transcript_source"] == "none"
     assert record["transcript_chars"] == 0
     assert record["verdict"] == {}
-    assert "whisper skipped" in record["error"]
+    assert record["error"] == "у ролика нет субтитров, распознавание речи отключено"
 
 
 def test_build_letsplay_never_calls_the_llm_without_text(search, llm, monkeypatch):

@@ -468,24 +468,31 @@ def get_transcript(video_id: str, seconds_left: float) -> tuple[str, str, str | 
         text = fetch_subtitles(video_id, seconds_left)
         if text:
             return text, "subtitles", None
-        subtitle_error = "no captions for this video"
+        subtitle_error = "у ролика нет субтитров"
     except RateLimited:
         # Nothing is wrong with the video; the record stays stale so the next crawl
         # picks it up again.
         return "", "none", "YouTube: слишком много запросов, повтор в следующем обходе"
     except Exception as exc:
-        subtitle_error = f"{type(exc).__name__}: {str(exc).splitlines()[0][:200]}"
-        log.info("no subtitles for %s (%s)", video_id, subtitle_error)
+        detail = str(exc).splitlines()[0][:160]
+        subtitle_error = f"не удалось получить субтитры ({detail})"
+        log.info("no subtitles for %s (%s)", video_id, detail)
 
     affordable, why = whisper_is_affordable()
     if not affordable:
-        return "", "none", f"{subtitle_error}; whisper skipped ({why})"
+        skipped = (
+            "распознавание речи отключено"
+            if why == "whisper disabled"
+            else f"распознавание речи недоступно ({why})"
+        )
+        return "", "none", f"{subtitle_error}, {skipped}"
     try:
         text = transcribe_audio(video_id, seconds_left)
     except Exception as exc:
-        return "", "none", f"{subtitle_error}; whisper failed: {str(exc).splitlines()[0][:200]}"
+        detail = str(exc).splitlines()[0][:160]
+        return "", "none", f"{subtitle_error}, распознавание речи не удалось ({detail})"
     if not text:
-        return "", "none", f"{subtitle_error}; whisper produced nothing"
+        return "", "none", f"{subtitle_error}, распознавание речи ничего не дало"
     return text, "whisper", None
 
 

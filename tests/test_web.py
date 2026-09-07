@@ -509,3 +509,99 @@ def test_the_search_placeholder_names_a_game_that_exists(client):
     body = client.get("/").text
     hint = re.search(r'placeholder="например, ([^"]+)"', body).group(1)
     assert client.get("/api/games", params={"q": hint}).json()["total"] >= 0
+
+
+# ------------------------------------------------- human reasons, 404 and titles
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("подходящий летсплей не найден", "Подходящий летсплей не найден."),
+        # `capitalize` would lowercase the rest and give "Youtube:".
+        ("YouTube: слишком много запросов", "YouTube: слишком много запросов."),
+        ("уже с точкой.", "Уже с точкой."),
+        ("", ""),
+        (None, ""),
+    ],
+)
+def test_a_reason_reads_as_one_sentence(raw, expected):
+    assert main.as_sentence(raw) == expected
+
+
+def test_a_card_shows_the_reason_without_a_technical_prefix(client):
+    from app.models import LetsPlay
+
+    with main.SessionLocal() as session:
+        game = session.scalar(select(Game).where(Game.slug == "nba"))
+        session.add(
+            LetsPlay(
+                game_id=game.id,
+                video_id="v1",
+                url="https://youtu.be/v1",
+                title="Run",
+                transcript_source="none",
+                transcript_chars=0,
+                verdict={},
+                error="у ролика нет субтитров, распознавание речи отключено",
+            )
+        )
+        session.commit()
+
+    body = client.get("/game/nba").text
+    assert "У ролика нет субтитров, распознавание речи отключено." in body
+    assert "Заключение не составлено" not in body
+    assert "whisper" not in body and "no captions" not in body
+
+
+def test_old_english_reasons_are_rewritten_at_startup(client):
+    from app.models import LetsPlay
+
+    with main.SessionLocal() as session:
+        game = session.scalar(select(Game).where(Game.slug == "nba"))
+        session.add(
+            LetsPlay(
+                game_id=game.id,
+                video_id="v1",
+                url="https://youtu.be/v1",
+                transcript_source="none",
+                transcript_chars=0,
+                verdict={},
+                error="no captions for this video; whisper skipped (whisper disabled)",
+            )
+        )
+        session.commit()
+
+    assert main.translate_letsplay_errors() == 1
+    with main.SessionLocal() as session:
+        row = session.scalar(select(LetsPlay))
+        assert row.error == "у ролика нет субтитров, распознавание речи отключено"
+    # Running it again changes nothing: matching is exact.
+    assert main.translate_letsplay_errors() == 0
+
+
+def test_an_unknown_game_gets_an_html_page_not_json(client):
+    response = client.get("/game/no-such-game")
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Игра не найдена" in response.text
+    assert "Вернуться в каталог" in response.text
+    assert "no-such-game" in response.text
+
+
+def test_the_api_still_answers_404_in_json(client):
+    response = client.get("/api/games/no-such-game")
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == {"detail": "game not found"}
+
+
+def test_every_page_has_its_own_tab_title(client):
+    assert "<title>Каталог игр — Metacritic AI Watch</title>" in client.get("/").text
+    assert "<title>Поиск «bl" in client.get("/", params={"q": "blood"}).text
+    assert (
+        "<title>Hollow Knight: Silksong — Metacritic AI Watch</title>"
+        in client.get("/game/silksong").text
+    )
+    assert "<title>Мониторинг — Metacritic AI Watch</title>" in client.get("/monitor").text
+    assert "<title>Игра не найдена" in client.get("/game/nope").text

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Игра не найдена — Metacritic AI Watch{% endblock %}
+{% block content %}
+  <section class="section nothing">
+    <h1 class="nothing__title">Игра не найдена</h1>
+    <p class="empty">
+      В базе нет игры со слагом «{{ slug }}». Возможно, её ещё не обошёл планировщик
+      или ссылка устарела.
+    </p>
+    <a class="btn btn--ghost" href="/">Вернуться в каталог</a>
+  </section>
+{% endblock %}

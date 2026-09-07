@@ -140,12 +140,12 @@
                 {{ lp.updated_at.strftime("%d.%m.%Y %H:%M UTC") }}
               </p>
             {% else %}
-              <p class="empty">Заключение не составлено: {{ lp.error or "нет расшифровки речи" }}</p>
+              <p class="empty">{{ (lp.error or "расшифровки речи нет") | sentence }}</p>
             {% endif %}
           </div>
         </div>
       {% elif lp %}
-        <p class="empty">Летсплей не подобран: {{ lp.error or "причина не записана" }}</p>
+        <p class="empty">{{ (lp.error or "летсплей не подобран") | sentence }}</p>
       {% else %}
         <p class="empty">Летсплей ещё не искали.</p>
       {% endif %}

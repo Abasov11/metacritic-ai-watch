@@ -71,6 +71,17 @@ DEFAULT_SORT = "metascore_desc"
 _YOUTUBE_RE = re.compile(r"(?:youtube\.com/(?:watch\?v=|embed/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})")
 
 
+def as_sentence(text: str | None) -> str:
+    """Capitalise the first letter only and end with a single full stop.
+
+    Jinja's `capitalize` lowercases the rest, which turns "YouTube" into "Youtube".
+    """
+    text = (text or "").strip().rstrip(".")
+    if not text:
+        return ""
+    return f"{text[:1].upper()}{text[1:]}."
+
+
 def safe_url(url: str | None) -> str | None:
     """Render external links only when they are plain http(s).
 
@@ -92,6 +103,28 @@ def youtube_embed(url: str | None) -> str | None:
     """Embed URL for a YouTube link, or None for anything else (jwplayer, …)."""
     match = _YOUTUBE_RE.search(url or "")
     return f"https://www.youtube.com/embed/{match.group(1)}" if match else None
+
+
+#: Reasons stored before the texts were written in Russian. Rewritten at startup so
+#: old rows read like the new ones; matching is exact, so running it twice is a no-op.
+LEGACY_LETSPLAY_ERRORS = {
+    "no captions for this video; whisper skipped (whisper disabled)": (
+        "у ролика нет субтитров, распознавание речи отключено"
+    ),
+    "no captions for this video": "у ролика нет субтитров",
+}
+
+
+def translate_letsplay_errors() -> int:
+    """Replace known English reasons with the Russian ones shown on a card."""
+    with SessionLocal() as session:
+        rows = session.scalars(
+            select(LetsPlay).where(LetsPlay.error.in_(LEGACY_LETSPLAY_ERRORS))
+        ).all()
+        for row in rows:
+            row.error = LEGACY_LETSPLAY_ERRORS[row.error]
+        session.commit()
+        return len(rows)
 
 
 def close_orphaned_runs() -> int:
@@ -117,6 +150,9 @@ async def lifespan(app: FastAPI):
     orphans = close_orphaned_runs()
     if orphans:
         log.warning("closed %d crawl run(s) left running by a previous process", orphans)
+    translated = translate_letsplay_errors()
+    if translated:
+        log.info("rewrote %d legacy let's play reason(s) in Russian", translated)
     monitor.reset()
     monitor.emit(type="startup", message="сервис запущен")
 
@@ -146,6 +182,7 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "app" / "static"), name="s
 templates = Jinja2Templates(directory=BASE_DIR / "app" / "templates")
 templates.env.globals["youtube_embed"] = youtube_embed
 templates.env.globals["safe_url"] = safe_url
+templates.env.filters["sentence"] = as_sentence
 
 
 @app.middleware("http")
@@ -415,7 +452,9 @@ def game_status(request: Request, slug: str, session: Session = Depends(get_sess
 def game_page(request: Request, slug: str, session: Session = Depends(get_session)):
     game = session.scalar(select(Game).where(Game.slug == slug))
     if game is None:
-        raise HTTPException(status_code=404, detail="game not found")
+        return templates.TemplateResponse(
+            request, "not_found.html", {"slug": slug}, status_code=404
+        )
 
     reviews: dict[str, list[Review]] = {}
     for kind in ("critic", "user"):
