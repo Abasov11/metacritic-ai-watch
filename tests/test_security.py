@@ -21,7 +21,9 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "init_db", lambda: None)
     monkeypatch.setattr(main, "create_scheduler", lambda: _NullScheduler())
     monkeypatch.setattr(main, "run_crawl", lambda reason: None)
-    monkeypatch.setattr(main, "_last_manual_run", 0.0)
+    # None = no manual run yet. A 0.0 sentinel sits inside the cooldown window on a
+    # freshly booted CI runner, whose monotonic clock starts near zero.
+    monkeypatch.setattr(main, "_last_manual_run", None)
     similar.invalidate()
     with factory() as session:
         session.add(Game(slug="a-game", title="A Game", genres=[]))
