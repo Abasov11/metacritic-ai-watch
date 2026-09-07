@@ -7,7 +7,7 @@
       <div class="field field--grow">
         <label class="field__label" for="q">Поиск по названию</label>
         <input class="field__input" type="search" id="q" name="q" value="{{ q }}"
-               placeholder="например, Silksong" autocomplete="off">
+               placeholder="например, Onimusha" autocomplete="off">
       </div>
       <div class="field">
         <label class="field__label" for="sort">Сортировка</label>
@@ -20,6 +20,12 @@
         </select>
       </div>
     </div>
+
+    <label class="chip chip--wide">
+      <input type="checkbox" name="with_summaries" value="1"
+             {% if with_summaries %}checked{% endif %}>
+      <span>только с резюме отзывов</span>
+    </label>
 
     {% if platform_names %}
       <fieldset class="platforms">

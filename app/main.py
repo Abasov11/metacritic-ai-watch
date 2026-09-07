@@ -22,7 +22,7 @@ from app import covers, llm, monitor, similar
 from app.config import BASE_DIR, settings
 from app.crawler import is_running, process_game, run_crawl
 from app.db import SessionLocal, init_db
-from app.models import CrawlRun, Game, Platform, Review, utcnow
+from app.models import CrawlRun, Game, LetsPlay, Platform, Review, Summary, utcnow
 from app.scheduler import create_scheduler
 
 log = logging.getLogger(__name__)
@@ -179,6 +179,7 @@ def query_games(
     platforms: list[str] | None = None,
     sort: str = DEFAULT_SORT,
     page: int = 1,
+    with_summaries: bool = False,
 ) -> tuple[list[Game], int]:
     """Filtered, sorted page of games plus the unpaginated total."""
     statement = select(Game)
@@ -189,6 +190,12 @@ def query_games(
         statement = statement.where(or_(Game.title.ilike(needle), Game.developer.ilike(needle)))
     if platforms:
         statement = statement.join(Platform).where(Platform.name.in_(platforms)).distinct()
+    if with_summaries:
+        # Most freshly released games have no reviews yet, so their summaries are the
+        # "Отзывов пока нет" note; this keeps only the ones a model actually wrote.
+        statement = statement.where(
+            Game.id.in_(select(Summary.game_id).where(Summary.review_count > 0))
+        )
 
     total = session.scalar(select(func.count()).select_from(statement.order_by(None).subquery()))
 
@@ -204,6 +211,27 @@ def query_games(
 
 def all_platform_names(session: Session) -> list[str]:
     return list(session.scalars(select(Platform.name).distinct().order_by(Platform.name)).all())
+
+
+def summary_flags(session: Session, games: list[Game]) -> dict[int, dict[str, bool]]:
+    """Which games have something worth clicking: a real summary, a let's play verdict."""
+    ids = [g.id for g in games]
+    if not ids:
+        return {}
+    with_summary = set(
+        session.scalars(
+            select(Summary.game_id).where(Summary.game_id.in_(ids), Summary.review_count > 0)
+        ).all()
+    )
+    with_letsplay = {
+        row.game_id
+        for row in session.scalars(select(LetsPlay).where(LetsPlay.game_id.in_(ids))).all()
+        if (row.verdict or {}).get("verdict")
+    }
+    return {
+        game.id: {"summary": game.id in with_summary, "letsplay": game.id in with_letsplay}
+        for game in games
+    }
 
 
 def game_to_dict(game: Game, full: bool = False) -> dict:
@@ -268,14 +296,17 @@ def index(
     platform: list[str] = Query(default=[]),
     sort: str = DEFAULT_SORT,
     page: int = 1,
+    with_summaries: bool = False,
     session: Session = Depends(get_session),
 ):
-    games, total = query_games(session, q, platform, sort, page)
+    games, total = query_games(session, q, platform, sort, page, with_summaries)
     pages = max((total + PER_PAGE - 1) // PER_PAGE, 1)
 
     def page_url(target: int) -> str:
         params = [("q", q)] if q else []
         params += [("platform", name) for name in platform]
+        if with_summaries:
+            params.append(("with_summaries", "1"))
         params += [("sort", sort), ("page", str(target))]
         return "?" + urlencode(params)
 
@@ -288,6 +319,8 @@ def index(
         "q": q,
         "selected_platforms": platform,
         "sort": sort,
+        "with_summaries": with_summaries,
+        "flags": summary_flags(session, games),
         "platform_names": all_platform_names(session),
     }
     # HTMX asks for the results only; a normal visit gets the whole page.
@@ -535,9 +568,10 @@ def api_games(
     platform: list[str] = Query(default=[]),
     sort: str = DEFAULT_SORT,
     page: int = 1,
+    with_summaries: bool = False,
     session: Session = Depends(get_session),
 ):
-    games, total = query_games(session, q, platform, sort, page)
+    games, total = query_games(session, q, platform, sort, page, with_summaries)
     return {
         "total": total,
         "page": max(page, 1),

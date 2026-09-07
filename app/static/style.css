@@ -436,3 +436,22 @@ img { display: block; max-width: 100%; }
 .stat--alert { border-color: var(--bad); }
 .stat--alert .stat__num { color: #fca5a5; }
 .mon__cooldown { color: var(--mixed); font-size: 0.82rem; }
+
+/* --------------------------------------------------- card marks & empty state */
+
+.marks { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.mark {
+  padding: 0.08rem 0.42rem; border-radius: 999px; font-size: 0.68rem;
+  border: 1px solid var(--line); white-space: nowrap;
+}
+.mark--summary { background: rgb(88 195 34 / 0.16); color: #9ae6b4; border-color: transparent; }
+.mark--letsplay { background: rgb(139 92 246 / 0.18); color: #c4b5fd; border-color: transparent; }
+
+.chip--wide { margin-top: 0.75rem; }
+
+.nothing {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.8rem;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1.5rem;
+}
+.nothing__title { margin: 0; color: var(--muted); }

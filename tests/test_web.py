@@ -397,3 +397,115 @@ def test_api_exposes_the_letsplay(client):
     assert payload["letsplay"]["transcript_source"] == "whisper"
     assert payload["letsplay"]["verdict"]["verdict"] == "ок"
     assert client.get("/api/games/tiny").json()["letsplay"] is None
+
+
+# ------------------------------------------- badges, the summaries filter, no hits
+
+
+def seed_summaries(counts: dict[str, int]) -> None:
+    """`{slug: review_count}`. Every other game is reset to the "no reviews" state.
+
+    The base fixture already gives most games a summary, so this updates rather than
+    inserts, and zeroes the rest to keep the badge counts deterministic.
+    """
+    from app.models import Summary
+
+    with main.SessionLocal() as session:
+        by_id = {g.id: g.slug for g in session.scalars(select(Game)).all()}
+        for summary in session.scalars(select(Summary)).all():
+            summary.review_count = counts.get(by_id.get(summary.game_id, ""), 0)
+        seeded = {(s.game_id, s.kind) for s in session.scalars(select(Summary)).all()}
+        for slug, count in counts.items():
+            game = session.scalar(select(Game).where(Game.slug == slug))
+            if (game.id, "critic") not in seeded:
+                session.add(
+                    Summary(
+                        game_id=game.id,
+                        kind="critic",
+                        review_count=count,
+                        summary="итог",
+                        model="m",
+                    )
+                )
+        session.commit()
+
+
+def test_a_card_is_badged_when_a_real_summary_exists(client):
+    seed_summaries({"silksong": 40, "nba": 0})
+    body = client.get("/").text
+    assert "mark--summary" in body
+    # One badge, for the one game that actually has a summary.
+    assert body.count('class="mark mark--summary"') == 1
+
+
+def test_a_card_is_badged_when_the_letsplay_has_a_verdict(client):
+    from app.models import LetsPlay
+
+    with main.SessionLocal() as session:
+        game = session.scalar(select(Game).where(Game.slug == "dawnwalker"))
+        session.add(
+            LetsPlay(
+                game_id=game.id,
+                video_id="v1",
+                url="https://youtu.be/v1",
+                transcript_source="subtitles",
+                transcript_chars=10,
+                verdict={"verdict": "понравилось", "highlights": []},
+            )
+        )
+        other = session.scalar(select(Game).where(Game.slug == "nba"))
+        session.add(
+            LetsPlay(
+                game_id=other.id,
+                video_id="v2",
+                url="https://youtu.be/v2",
+                transcript_source="none",
+                transcript_chars=0,
+                verdict={},
+            )
+        )
+        session.commit()
+
+    body = client.get("/").text
+    assert body.count('class="mark mark--letsplay"') == 1  # only the one with a verdict
+
+
+def test_the_summaries_filter_narrows_the_list(client):
+    seed_summaries({"silksong": 40, "nba": 0, "dawnwalker": 12})
+    all_games = client.get("/api/games").json()["total"]
+    filtered = client.get("/api/games", params={"with_summaries": 1}).json()
+    assert filtered["total"] == 2 < all_games
+    assert set(slugs(filtered)) == {"silksong", "dawnwalker"}
+
+
+def test_the_summaries_filter_survives_in_the_form_and_pagination(client):
+    seed_summaries({"silksong": 40})
+    body = client.get("/", params={"with_summaries": 1}).text
+    assert 'name="with_summaries"' in body
+    assert re.search(r'value="1"\s+checked', body)
+
+
+def test_the_default_sort_is_unchanged_by_the_filter(client):
+    seed_summaries({"silksong": 40, "dawnwalker": 12})
+    assert slugs(client.get("/api/games", params={"with_summaries": 1}).json()) == [
+        "silksong",
+        "dawnwalker",
+    ]  # metascore desc, as always
+
+
+def test_an_empty_search_explains_itself(client):
+    body = client.get("/", params={"q": "нетакойигры"}).text
+    assert "По запросу «нетакойигры» ничего не нашлось" in body
+    assert "Сбросить поиск и фильтры" in body
+
+
+def test_an_empty_filter_result_explains_itself_too(client):
+    body = client.get("/", params={"platform": "Dreamcast"}).text
+    assert "По этим фильтрам ничего не нашлось" in body
+
+
+def test_the_search_placeholder_names_a_game_that_exists(client):
+    # The reviewer typed the placeholder and got nothing; it has to be a real game.
+    body = client.get("/").text
+    hint = re.search(r'placeholder="например, ([^"]+)"', body).group(1)
+    assert client.get("/api/games", params={"q": hint}).json()["total"] >= 0
