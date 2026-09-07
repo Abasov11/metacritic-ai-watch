@@ -6,9 +6,15 @@
     <h1 class="mon__title">Мониторинг</h1>
     <div class="mon__actions">
       <span id="conn" class="conn conn--wait">подключение…</span>
-      <button id="run" class="btn" type="button" {% if busy %}disabled{% endif %}>
+      <button id="run" class="btn" type="button"
+              {% if busy or state.cooldown_left %}disabled{% endif %}>
         Запустить обход сейчас
       </button>
+      <span id="cooldown" class="mon__cooldown">
+        {%- if state.cooldown_left -%}
+          ручной запуск доступен через {{ (state.cooldown_left / 60) | round(0, "ceil") | int }} мин
+        {%- endif -%}
+      </span>
     </div>
   </div>
   <p id="run-msg" class="mon__msg" role="status"></p>
@@ -52,6 +58,12 @@
       {% endfor %}
       <li class="stat"><span class="stat__num" data-k="llm_cost">{{ "%.4f"|format(state.today.llm_cost) }}</span>
         <span class="stat__label">$ на LLM</span></li>
+      <li class="stat {% if state.budget.exhausted %}stat--alert{% endif %}" id="budget">
+        <span class="stat__num" data-budget>
+          ${{ "%.4f"|format(state.budget.spent) }} из ${{ "%.2f"|format(state.budget.limit) }}
+        </span>
+        <span class="stat__label">бюджет дня{% if state.budget.exhausted %} — исчерпан{% endif %}</span>
+      </li>
     </ul>
   </section>
 

@@ -141,7 +141,7 @@ def test_manual_run_is_rate_limited(client):
     second = client.post("/monitor/run")
     assert second.status_code == 429
     assert int(second.headers["Retry-After"]) > 0
-    assert "слишком часто" in second.json()["detail"]
+    assert "ручной запуск доступен через" in second.json()["detail"]
 
 
 def test_a_refused_run_never_starts_a_crawl(client, monkeypatch):
@@ -314,3 +314,55 @@ def test_the_card_shows_the_refresh_button(client):
     assert 'id="refresh-btn"' in body
     assert 'data-slug="a-game"' in body
     assert "/static/game.js" in body
+
+
+# ------------------------------------------- manual-run cooldown and spend budget
+
+
+def test_a_second_manual_run_waits_out_the_cooldown(client, refresh, monkeypatch):
+    monkeypatch.setattr(main.settings, "manual_run_cooldown_minutes", 10)
+    now = [1000.0]
+    monkeypatch.setattr(main.time, "monotonic", lambda: now[0])
+
+    assert client.post("/monitor/run").status_code == 202
+
+    second = client.post("/monitor/run")
+    assert second.status_code == 429
+    assert second.json()["detail"] == "ручной запуск доступен через 10 мин"
+    assert int(second.headers["Retry-After"]) > 0
+
+    now[0] += 9 * 60  # still inside the window
+    assert client.post("/monitor/run").status_code == 429
+
+    now[0] += 2 * 60  # past it
+    assert client.post("/monitor/run").status_code == 202
+
+
+def test_the_cooldown_does_not_touch_scheduled_crawls(client, monkeypatch):
+    monkeypatch.setattr(main.settings, "manual_run_cooldown_minutes", 10)
+    monkeypatch.setattr(main, "_last_manual_run", main.time.monotonic())
+    assert main.manual_cooldown_left() > 0
+
+    # The scheduler calls run_crawl directly; only the HTTP button is rate limited.
+    from app import scheduler
+
+    started = []
+    monkeypatch.setattr(scheduler, "run_crawl", lambda reason: started.append(reason))
+    scheduler._job()
+    assert started == ["scheduled"]
+
+
+def test_the_dashboard_says_when_the_button_is_on_cooldown(client, monkeypatch):
+    monkeypatch.setattr(main.settings, "manual_run_cooldown_minutes", 10)
+    monkeypatch.setattr(main, "_last_manual_run", main.time.monotonic())
+    body = client.get("/monitor").text
+    assert "ручной запуск доступен через 10 мин" in body
+    assert (
+        'id="run" class="btn" type="button"\n              disabled' in body or "disabled" in body
+    )
+
+
+def test_healthz_reports_the_budget(client):
+    budget = client.get("/healthz").json()["llm_budget"]
+    assert set(budget) == {"spent", "limit", "left", "exhausted"}
+    assert budget["limit"] > 0

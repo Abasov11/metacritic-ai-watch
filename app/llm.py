@@ -32,6 +32,10 @@ class LLMError(RuntimeError):
     pass
 
 
+class BudgetExhausted(LLMError):
+    """The day's spend cap is reached; not an error, just a stop sign."""
+
+
 def _extract_json(content: str) -> dict[str, Any]:
     """Parse the reply, tolerating ```json fences and prose around the object."""
     text = _FENCE_RE.sub("", content).strip()
@@ -55,6 +59,36 @@ def _record(session_maker, **kwargs) -> None:
         log.exception("could not record llm call")
 
 
+def spent_today(session_maker=None) -> float:
+    """What the models have cost since local midnight."""
+    from sqlalchemy import func, select
+
+    from app.crawler import day_start_utc
+
+    try:
+        with (session_maker or SessionLocal)() as session:
+            since = day_start_utc().replace(tzinfo=None)
+            return float(
+                session.scalar(select(func.sum(LlmCall.cost)).where(LlmCall.created_at >= since))
+                or 0.0
+            )
+    except Exception:  # pragma: no cover - never block a crawl over accounting
+        log.exception("could not read today's spend")
+        return 0.0
+
+
+def budget_state() -> dict:
+    """Spent / limit / left, for the dashboard and /healthz."""
+    limit = settings.llm_daily_budget_usd
+    spent = spent_today()
+    return {
+        "spent": round(spent, 6),
+        "limit": round(limit, 6),
+        "left": round(max(limit - spent, 0.0), 6),
+        "exhausted": limit > 0 and spent >= limit,
+    }
+
+
 def chat_json(
     prompt: str,
     schema_hint: str,
@@ -70,6 +104,19 @@ def chat_json(
     """
     if not settings.openrouter_api_key:
         raise LLMError("OPENROUTER_API_KEY is not set")
+
+    limit = settings.llm_daily_budget_usd
+    if limit > 0:
+        spent = spent_today()
+        if spent >= limit:
+            monitor.emit(
+                type="budget_exhausted",
+                worker="llm",
+                status="idle",
+                game_id=game_id,
+                message=f"дневной бюджет исчерпан: ${spent:.4f} из ${limit:.2f}",
+            )
+            raise BudgetExhausted(f"дневной бюджет модели исчерпан (${spent:.4f} из ${limit:.2f})")
 
     body = {
         "messages": [

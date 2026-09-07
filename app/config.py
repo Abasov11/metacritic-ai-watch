@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     tz: str = "Europe/Moscow"
     crawl_interval_minutes: int = 60
+    #: Anyone who can reach /monitor can press the button, so the damage is capped
+    #: rather than the access: no second manual crawl until this many minutes pass.
+    #: Scheduled crawls ignore it.
+    manual_run_cooldown_minutes: int = 10
     crawl_batch_size: int = 20
     reviews_per_kind: int = 40
 
@@ -73,6 +77,9 @@ class Settings(BaseSettings):
     openrouter_model: str = "deepseek/deepseek-v4-flash"
     openrouter_fallback_model: str = "google/gemini-2.5-flash-lite"
     llm_timeout: float = 60.0
+    #: Spend cap per local day, counted from `llm_calls.cost`. The crawl keeps running
+    #: once it is hit — games are stored without summaries and retried tomorrow.
+    llm_daily_budget_usd: float = 1.0
     #: Grades the summaries in `app.eval`. Deliberately a third vendor: neither the
     #: summariser nor its fallback, so nothing ever marks its own homework.
     eval_judge_model: str = "openai/gpt-4.1-mini"

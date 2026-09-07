@@ -16,6 +16,18 @@
       const el = document.querySelector(`#today [data-k="${k}"]`);
       if (el) el.textContent = k === "llm_cost" ? Number(v).toFixed(4) : v;
     }
+    const budget = document.querySelector("#budget [data-budget]");
+    if (budget && s.budget) {
+      budget.textContent = `$${Number(s.budget.spent).toFixed(4)} из $${Number(s.budget.limit).toFixed(2)}`;
+      document.querySelector("#budget").classList.toggle("stat--alert", !!s.budget.exhausted);
+    }
+    const cooldown = $("#cooldown");
+    if (cooldown) {
+      const left = Number(s.cooldown_left || 0);
+      cooldown.textContent = left > 0
+        ? `ручной запуск доступен через ${Math.ceil(left / 60)} мин` : "";
+    }
+
     const box = $("#run-box"), r = s.run;
     if (r) {
       const done = r.processed + r.failed;
@@ -25,7 +37,7 @@
       runBtn.disabled = true;
     } else {
       box.innerHTML = '<p class="empty">Обход не идёт.</p>';
-      runBtn.disabled = false;
+      runBtn.disabled = Number(s.cooldown_left || 0) > 0;
     }
   }
 

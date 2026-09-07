@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app import covers, monitor, similar
+from app import covers, llm, monitor, similar
 from app.config import BASE_DIR, settings
 from app.crawler import is_running, process_game, run_crawl
 from app.db import SessionLocal, init_db
@@ -33,8 +33,6 @@ RECENT_RUNS = 10
 MAX_QUERY_CHARS = 100
 MAX_PLATFORM_FILTERS = 40
 MAX_PAGE = 10_000
-#: Manual crawls cost money, so the button cannot be held down.
-MANUAL_RUN_MIN_INTERVAL = 60.0
 #: Same idea per game, for the refresh button on a card.
 REFRESH_MIN_INTERVAL = 60.0
 
@@ -433,7 +431,11 @@ def monitor_page(request: Request, session: Session = Depends(get_session)):
     return templates.TemplateResponse(
         request,
         "monitor.html",
-        {"state": monitor.snapshot(), "runs": recent_runs(session), "busy": is_running()},
+        {
+            "state": monitor.snapshot() | {"cooldown_left": manual_cooldown_left()},
+            "runs": recent_runs(session),
+            "busy": is_running(),
+        },
     )
 
 
@@ -442,7 +444,7 @@ async def monitor_stream():
     """Server-sent events: a state snapshot, then every new event as it happens."""
 
     async def gen():
-        snapshot = monitor.snapshot()
+        snapshot = monitor.snapshot() | {"cooldown_left": manual_cooldown_left()}
         yield f"event: state\ndata: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
         seq = snapshot["seq"]
         idle_for = 0.0
@@ -453,7 +455,9 @@ async def monitor_stream():
                 seq = new[-1]["seq"]
                 for event in new:
                     yield f"event: log\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
-                state = monitor.snapshot(with_events=False)
+                state = monitor.snapshot(with_events=False) | {
+                    "cooldown_left": manual_cooldown_left()
+                }
                 yield f"event: state\ndata: {json.dumps(state, ensure_ascii=False)}\n\n"
                 idle_for = 0.0
             else:
@@ -468,6 +472,14 @@ async def monitor_stream():
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def manual_cooldown_left() -> float:
+    """Seconds until the next manual crawl is allowed. Scheduled runs ignore this."""
+    if _last_manual_run is None:
+        return 0.0
+    cooldown = settings.manual_run_cooldown_minutes * 60
+    return max(cooldown - (time.monotonic() - _last_manual_run), 0.0)
 
 
 def is_same_origin(request: Request) -> bool:
@@ -497,15 +509,14 @@ def monitor_run(request: Request):
     if is_running():
         return JSONResponse({"detail": "обход уже идёт"}, status_code=409)
 
-    if _last_manual_run is not None:
-        waited = time.monotonic() - _last_manual_run
-        if waited < MANUAL_RUN_MIN_INTERVAL:
-            retry_after = int(MANUAL_RUN_MIN_INTERVAL - waited) + 1
-            return JSONResponse(
-                {"detail": f"слишком часто, попробуйте через {retry_after} с"},
-                status_code=429,
-                headers={"Retry-After": str(retry_after)},
-            )
+    left = manual_cooldown_left()
+    if left > 0:
+        minutes = max(int(left // 60) + (1 if left % 60 else 0), 1)
+        return JSONResponse(
+            {"detail": f"ручной запуск доступен через {minutes} мин"},
+            status_code=429,
+            headers={"Retry-After": str(int(left) + 1)},
+        )
     _last_manual_run = time.monotonic()
 
     # The 409 above is advisory UX; a request that slips through the race still hits
@@ -549,6 +560,7 @@ def healthz(session: Session = Depends(get_session)):
     state = monitor.snapshot(with_events=False)
     return {
         "status": "ok",
+        "llm_budget": llm.budget_state(),
         "games": session.scalar(select(func.count(Game.id))) or 0,
         "crawl_running": is_running(),
         "workers": state["workers"],

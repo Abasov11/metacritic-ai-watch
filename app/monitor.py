@@ -168,6 +168,9 @@ def snapshot(with_events: bool = True) -> dict[str, Any]:
             "run": dict(_current_run) if _current_run else None,
         }
     state["today"] = _today_totals()
+    from app.llm import budget_state
+
+    state["budget"] = budget_state()
     if with_events:
         state["events"] = events()
     return state

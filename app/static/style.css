@@ -432,3 +432,7 @@ img { display: block; max-width: 100%; }
 .refresh__msg { font-size: 0.82rem; }
 .refresh__msg--ok { color: var(--good); }
 .refresh__msg--warn { color: var(--mixed); }
+
+.stat--alert { border-color: var(--bad); }
+.stat--alert .stat__num { color: #fca5a5; }
+.mon__cooldown { color: var(--mixed); font-size: 0.82rem; }

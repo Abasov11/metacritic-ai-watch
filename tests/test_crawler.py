@@ -369,3 +369,22 @@ def test_similar_games_ranks_the_closest_first(db, scraper, llm, monkeypatch):
     assert ranked[0][0] == ids["metroid2"]
     # The basketball game shares only boilerplate (studio, platforms), which idf zeroes.
     assert by_id.get(ids["sport"], 0.0) < by_id[ids["metroid2"]]
+
+
+def test_an_exhausted_budget_leaves_the_game_due_for_a_retry(db, scraper, monkeypatch):
+    from app.llm import BudgetExhausted
+
+    def refuse(*a, **k):
+        raise BudgetExhausted("дневной бюджет модели исчерпан ($1.20 из $1.00)")
+
+    monkeypatch.setattr(crawler, "summarize_reviews", refuse)
+    run = crawler.run_crawl("test", limit=1)
+
+    with db() as session:
+        game = session.scalar(select(Game).where(Game.slug == "nr-0"))
+        assert game is not None  # scraped data is kept
+        assert game.last_crawled_at is None  # ...and picked up again next time
+        item = session.scalar(select(CrawlItem))
+        assert item.status == "partial"
+        assert "бюджет" in item.error
+    assert run.processed == 1

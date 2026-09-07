@@ -139,3 +139,61 @@ def test_summary_prompt_is_capped(monkeypatch, db):
     assert "x" * (llm.MAX_REVIEW_CHARS + 1) not in captured["prompt"]
     assert captured["headers"]["X-Title"] and captured["headers"]["HTTP-Referer"]
     assert captured["headers"]["Authorization"] == "Bearer test-key"
+
+
+# ---------------------------------------------------------------- daily budget
+
+
+def test_a_call_is_refused_once_the_day_is_spent(monkeypatch, db):
+    monkeypatch.setattr(llm.settings, "llm_daily_budget_usd", 1.0)
+    monkeypatch.setattr(llm, "spent_today", lambda session_maker=None: 1.5)
+    asked = install_post(monkeypatch, lambda model, _n: ok_reply("{}", model))
+
+    with pytest.raises(llm.BudgetExhausted, match="бюджет"):
+        llm.chat_json("hi", "{}", purpose="summary:critic")
+    assert asked == []  # the model is never contacted
+
+
+def test_the_refusal_is_announced_in_the_monitor(monkeypatch, db):
+    from app import monitor
+
+    monitor.reset()
+    monkeypatch.setattr(llm.settings, "llm_daily_budget_usd", 1.0)
+    monkeypatch.setattr(llm, "spent_today", lambda session_maker=None: 2.0)
+    install_post(monkeypatch, lambda model, _n: ok_reply("{}", model))
+
+    with pytest.raises(llm.BudgetExhausted):
+        llm.chat_json("hi", "{}")
+    kinds = [e["type"] for e in monitor.events()]
+    assert "budget_exhausted" in kinds
+
+
+def test_spending_under_the_cap_goes_through(monkeypatch, db):
+    monkeypatch.setattr(llm.settings, "llm_daily_budget_usd", 1.0)
+    monkeypatch.setattr(llm, "spent_today", lambda session_maker=None: 0.4)
+    install_post(monkeypatch, lambda model, _n: ok_reply('{"a": 1}', model))
+    assert llm.chat_json("hi", "{}")["a"] == 1
+
+
+def test_a_zero_limit_means_no_limit(monkeypatch, db):
+    monkeypatch.setattr(llm.settings, "llm_daily_budget_usd", 0.0)
+    monkeypatch.setattr(llm, "spent_today", lambda session_maker=None: 99.0)
+    install_post(monkeypatch, lambda model, _n: ok_reply('{"a": 1}', model))
+    assert llm.chat_json("hi", "{}")["a"] == 1
+
+
+def test_budget_state_reports_what_is_left(monkeypatch, db):
+    monkeypatch.setattr(llm.settings, "llm_daily_budget_usd", 2.0)
+    monkeypatch.setattr(llm, "spent_today", lambda session_maker=None: 0.5)
+    assert llm.budget_state() == {"spent": 0.5, "limit": 2.0, "left": 1.5, "exhausted": False}
+    monkeypatch.setattr(llm, "spent_today", lambda session_maker=None: 2.5)
+    state = llm.budget_state()
+    assert state["exhausted"] is True and state["left"] == 0.0
+
+
+def test_a_broken_accounting_query_never_blocks_a_crawl(monkeypatch, db):
+    def boom():
+        raise RuntimeError("нет базы")
+
+    monkeypatch.setattr(llm, "SessionLocal", boom)
+    assert llm.spent_today() == 0.0
